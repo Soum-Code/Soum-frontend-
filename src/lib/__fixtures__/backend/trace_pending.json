@@ -1,0 +1,83 @@
+{
+  "method": "GET",
+  "path": "/v1/traces/c6d4d5ba895b4fe5b8341759420451d1",
+  "status": 200,
+  "body": {
+    "trace": {
+      "trace_id": "c6d4d5ba895b4fe5b8341759420451d1",
+      "pipeline_id": null,
+      "service_name": "rag_chat",
+      "start_time": "2026-10-20T07:23:44.421822",
+      "end_time": "2026-10-20T07:23:44.422654",
+      "status": "running",
+      "total_spans": 3,
+      "overall_risk_score": null
+    },
+    "spans": [
+      {
+        "span_id": "fd237a22c9d14b58",
+        "parent_span_id": null,
+        "agent_id": "retriever",
+        "agent_role": "Evidence Retriever",
+        "event_type": "agent_execution",
+        "span_kind": "LLM",
+        "latency_ms": 0.29,
+        "status": "success",
+        "error_message": null,
+        "model": "fixture-retriever",
+        "tokens_in": 412,
+        "tokens_out": 58,
+        "tool_name": "local_retriever",
+        "tool_args": "What is agent drift?",
+        "tool_result_summary": "Found 3 documents: SQLite Write-Ahead Logging (WAL) Architecture; Attention Is All You Need; Telemetry Performance Baseline KPI Definitions",
+        "input_summary": "SQLite Write-Ahead Logging (WAL) Architecture: In WAL mode, changes are written into a separate write-ahead log file rather than the main database file. This allows readers to continue reading from the database while another process writes into the log. SQLite in WAL mode provides significantly higher concurrency than rollback journal mode.\n\nAttention Is All You Need: The Transformer architecture relies entirely on self-attention mechanisms to compute representations of its input and output without using sequence-aligned RNNs or convolution. Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions.\n\nTelemetry Performance Baseline KPI Definitions: Standard operational thresholds: In-memory enqueue latency must remain below 0.05ms P95; background evaluator cascade latency target is 150ms P95; Agent Stability Index (ASI) below 70 triggers a WARNING alert, while ASI below 50 triggers a CRITICAL drift incident.",
+        "output_summary": "I retrieved three documents about agent drift and how it is measured.",
+        "start_time": "2026-10-20T07:23:44.421822",
+        "evaluation": null
+      },
+      {
+        "span_id": "6be644ac082b4df7",
+        "parent_span_id": null,
+        "agent_id": "verifier",
+        "agent_role": "Claim Verifier",
+        "event_type": "agent_execution",
+        "span_kind": "LLM",
+        "latency_ms": 0.38,
+        "status": "success",
+        "error_message": null,
+        "model": "fixture-verifier",
+        "tokens_in": 412,
+        "tokens_out": 58,
+        "tool_name": null,
+        "tool_args": null,
+        "tool_result_summary": null,
+        "input_summary": "SQLite Write-Ahead Logging (WAL) Architecture: In WAL mode, changes are written into a separate write-ahead log file rather than the main database file. This allows readers to continue reading from the database while another process writes into the log. SQLite in WAL mode provides significantly higher concurrency than rollback journal mode.\n\nAttention Is All You Need: The Transformer architecture relies entirely on self-attention mechanisms to compute representations of its input and output without using sequence-aligned RNNs or convolution. Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions.\n\nTelemetry Performance Baseline KPI Definitions: Standard operational thresholds: In-memory enqueue latency must remain below 0.05ms P95; background evaluator cascade latency target is 150ms P95; Agent Stability Index (ASI) below 70 triggers a WARNING alert, while ASI below 50 triggers a CRITICAL drift incident.",
+        "output_summary": "The evidence answers the question. The retrieved documents describe drift directly.",
+        "start_time": "2026-10-20T07:23:44.422143",
+        "evaluation": null
+      },
+      {
+        "span_id": "037bbbc006cf4c79",
+        "parent_span_id": null,
+        "agent_id": "answerer",
+        "agent_role": "Answer Synthesizer",
+        "event_type": "agent_execution",
+        "span_kind": "LLM",
+        "latency_ms": 0.11,
+        "status": "success",
+        "error_message": null,
+        "model": "fixture-answerer",
+        "tokens_in": 412,
+        "tokens_out": 58,
+        "tool_name": null,
+        "tool_args": null,
+        "tool_result_summary": null,
+        "input_summary": "SQLite Write-Ahead Logging (WAL) Architecture: In WAL mode, changes are written into a separate write-ahead log file rather than the main database file. This allows readers to continue reading from the database while another process writes into the log. SQLite in WAL mode provides significantly higher concurrency than rollback journal mode.\n\nAttention Is All You Need: The Transformer architecture relies entirely on self-attention mechanisms to compute representations of its input and output without using sequence-aligned RNNs or convolution. Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions.\n\nTelemetry Performance Baseline KPI Definitions: Standard operational thresholds: In-memory enqueue latency must remain below 0.05ms P95; background evaluator cascade latency target is 150ms P95; Agent Stability Index (ASI) below 70 triggers a WARNING alert, while ASI below 50 triggers a CRITICAL drift incident.",
+        "output_summary": "Drift is the shift in an agent's behaviour away from its baseline, measured on pooled windows of its outputs.",
+        "start_time": "2026-10-20T07:23:44.422548",
+        "evaluation": null
+      }
+    ],
+    "alerts": []
+  }
+}

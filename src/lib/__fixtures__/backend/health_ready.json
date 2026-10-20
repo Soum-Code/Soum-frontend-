@@ -1,0 +1,15 @@
+{
+  "method": "GET",
+  "path": "/v1/health/ready",
+  "status": 200,
+  "body": {
+    "ready": true,
+    "checks": {
+      "database": {
+        "ok": true,
+        "detail": null
+      }
+    },
+    "reasons": []
+  }
+}

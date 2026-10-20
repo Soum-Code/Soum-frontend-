@@ -1,0 +1,23 @@
+{
+  "method": "POST",
+  "path": "/chat",
+  "status": 502,
+  "body": {
+    "session_id": "sess_fixture",
+    "trace_id": "178ec2103c064d33b8478c34247d1ba1",
+    "error": "RuntimeError: verifier (fixture-verifier): upstream 500",
+    "agents": [
+      {
+        "agent": "retriever",
+        "model": "fixture-retriever",
+        "output": "I retrieved three documents about agent drift and how it is measured.",
+        "latency_ms": 0
+      }
+    ],
+    "retrieved": [
+      "SQLite Write-Ahead Logging (WAL) Architecture",
+      "Attention Is All You Need",
+      "Telemetry Performance Baseline KPI Definitions"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "method": "POST",
+  "path": "/chat",
+  "status": 503,
+  "body": {
+    "session_id": "sess_60f1d19d98",
+    "error": "No credential for provider 'nvidia'. Set NVIDIA_API_KEY (or CHAT_PROVIDER to one you have a key for) and restart the chat server.",
+    "agents": []
+  }
+}

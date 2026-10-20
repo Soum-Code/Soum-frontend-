@@ -1,0 +1,74 @@
+{
+  "method": "GET",
+  "path": "/v1/traces/178ec2103c064d33b8478c34247d1ba1",
+  "status": 200,
+  "body": {
+    "trace": {
+      "trace_id": "178ec2103c064d33b8478c34247d1ba1",
+      "pipeline_id": null,
+      "service_name": "rag_chat",
+      "start_time": "2026-10-20T07:23:44.437727",
+      "end_time": "2026-10-20T07:23:44.438348",
+      "status": "running",
+      "total_spans": 2,
+      "overall_risk_score": null
+    },
+    "spans": [
+      {
+        "span_id": "f991f2acac7f4b0d",
+        "parent_span_id": null,
+        "agent_id": "retriever",
+        "agent_role": "Evidence Retriever",
+        "event_type": "agent_execution",
+        "span_kind": "LLM",
+        "latency_ms": 0.32,
+        "status": "success",
+        "error_message": null,
+        "model": "fixture-retriever",
+        "tokens_in": 412,
+        "tokens_out": 58,
+        "tool_name": "local_retriever",
+        "tool_args": "What is agent drift?",
+        "tool_result_summary": "Found 3 documents: SQLite Write-Ahead Logging (WAL) Architecture; Attention Is All You Need; Telemetry Performance Baseline KPI Definitions",
+        "input_summary": "SQLite Write-Ahead Logging (WAL) Architecture: In WAL mode, changes are written into a separate write-ahead log file rather than the main database file. This allows readers to continue reading from the database while another process writes into the log. SQLite in WAL mode provides significantly higher concurrency than rollback journal mode.\n\nAttention Is All You Need: The Transformer architecture relies entirely on self-attention mechanisms to compute representations of its input and output without using sequence-aligned RNNs or convolution. Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions.\n\nTelemetry Performance Baseline KPI Definitions: Standard operational thresholds: In-memory enqueue latency must remain below 0.05ms P95; background evaluator cascade latency target is 150ms P95; Agent Stability Index (ASI) below 70 triggers a WARNING alert, while ASI below 50 triggers a CRITICAL drift incident.",
+        "output_summary": "I retrieved three documents about agent drift and how it is measured.",
+        "start_time": "2026-10-20T07:23:44.437727",
+        "evaluation": {
+          "grounding_score": 0.1,
+          "tool_claim_score": 0.0,
+          "overall_risk_score": 0.1,
+          "label": "low_risk",
+          "evaluation_stage": "stage1"
+        }
+      },
+      {
+        "span_id": "5bfabeb88a2c4bd4",
+        "parent_span_id": null,
+        "agent_id": "verifier",
+        "agent_role": "Claim Verifier",
+        "event_type": "agent_execution",
+        "span_kind": "LLM",
+        "latency_ms": 0.26,
+        "status": "error",
+        "error_message": "RuntimeError: upstream 500",
+        "model": "fixture-verifier",
+        "tokens_in": null,
+        "tokens_out": null,
+        "tool_name": null,
+        "tool_args": null,
+        "tool_result_summary": null,
+        "input_summary": "SQLite Write-Ahead Logging (WAL) Architecture: In WAL mode, changes are written into a separate write-ahead log file rather than the main database file. This allows readers to continue reading from the database while another process writes into the log. SQLite in WAL mode provides significantly higher concurrency than rollback journal mode.\n\nAttention Is All You Need: The Transformer architecture relies entirely on self-attention mechanisms to compute representations of its input and output without using sequence-aligned RNNs or convolution. Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions.\n\nTelemetry Performance Baseline KPI Definitions: Standard operational thresholds: In-memory enqueue latency must remain below 0.05ms P95; background evaluator cascade latency target is 150ms P95; Agent Stability Index (ASI) below 70 triggers a WARNING alert, while ASI below 50 triggers a CRITICAL drift incident.",
+        "output_summary": null,
+        "start_time": "2026-10-20T07:23:44.438087",
+        "evaluation": {
+          "grounding_score": null,
+          "tool_claim_score": null,
+          "overall_risk_score": null,
+          "label": null,
+          "evaluation_stage": "skipped"
+        }
+      }
+    ],
+    "alerts": []
+  }
+}

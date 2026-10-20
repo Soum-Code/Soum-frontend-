@@ -1,0 +1,8 @@
+{
+  "method": "PATCH",
+  "path": "/v1/alerts/999999",
+  "status": 404,
+  "body": {
+    "detail": "Alert not found"
+  }
+}

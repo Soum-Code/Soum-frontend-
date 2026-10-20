@@ -1,0 +1,85 @@
+{
+  "method": "GET",
+  "path": "/v1/alerts",
+  "status": 200,
+  "body": {
+    "alerts": [
+      {
+        "id": 4,
+        "alert_type": "ASI_DROP",
+        "severity": "MEDIUM",
+        "message": "Agent stability dropped for 'retriever': ASI=42.0 (threshold=50.0)",
+        "agent_id": "retriever",
+        "trace_id": null,
+        "span_id": null,
+        "acknowledged": false,
+        "resolved": false,
+        "created_at": "2026-10-20T07:23:45.237254",
+        "details": {
+          "condition_field": "stability_index",
+          "value": 42.0,
+          "threshold": 50.0,
+          "window_centroid_distance": 0.34,
+          "stability_index": 42.0
+        }
+      },
+      {
+        "id": 3,
+        "alert_type": "DRIFT_DETECTED",
+        "severity": "MEDIUM",
+        "message": "Drift detected for agent 'retriever': distance=0.34 (threshold=0.3)",
+        "agent_id": "retriever",
+        "trace_id": null,
+        "span_id": null,
+        "acknowledged": false,
+        "resolved": false,
+        "created_at": "2026-10-20T07:23:45.237193",
+        "details": {
+          "condition_field": "window_centroid_distance",
+          "value": 0.34,
+          "threshold": 0.3,
+          "window_centroid_distance": 0.34,
+          "stability_index": 42.0
+        }
+      },
+      {
+        "id": 2,
+        "alert_type": "GROUNDING_FAILURE",
+        "severity": "HIGH",
+        "message": "Grounding failure for agent 'answerer': grounding_risk=0.81 (threshold=0.7)",
+        "agent_id": "answerer",
+        "trace_id": "c6d4d5ba895b4fe5b8341759420451d1",
+        "span_id": "037bbbc006cf4c79",
+        "acknowledged": true,
+        "resolved": false,
+        "created_at": "2026-10-20T07:23:45.237128",
+        "details": {
+          "condition_field": "grounding_score",
+          "value": 0.81,
+          "threshold": 0.7,
+          "risk_score": 0.81,
+          "grounding_score": 0.81
+        }
+      },
+      {
+        "id": 1,
+        "alert_type": "HIGH_HALLUCINATION_RISK",
+        "severity": "HIGH",
+        "message": "High hallucination risk detected for agent 'answerer': risk=0.81 (threshold=0.7)",
+        "agent_id": "answerer",
+        "trace_id": "c6d4d5ba895b4fe5b8341759420451d1",
+        "span_id": "037bbbc006cf4c79",
+        "acknowledged": false,
+        "resolved": false,
+        "created_at": "2026-10-20T07:23:45.236993",
+        "details": {
+          "condition_field": "risk_score",
+          "value": 0.81,
+          "threshold": 0.7,
+          "risk_score": 0.81,
+          "grounding_score": 0.81
+        }
+      }
+    ]
+  }
+}

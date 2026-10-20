@@ -1,0 +1,33 @@
+{
+  "method": "GET",
+  "path": "/v1/drift",
+  "status": 200,
+  "body": {
+    "agents": [
+      {
+        "agent_id": "retriever",
+        "current_asi": 42.0,
+        "latest_centroid_distance": 0.27,
+        "latest_window_centroid_distance": 0.34,
+        "latest_tool_drift": 0.05,
+        "baseline_size": 41
+      },
+      {
+        "agent_id": "verifier",
+        "current_asi": 88.4,
+        "latest_centroid_distance": 0.15,
+        "latest_window_centroid_distance": 0.11,
+        "latest_tool_drift": 0.0,
+        "baseline_size": 32
+      },
+      {
+        "agent_id": "answerer",
+        "current_asi": null,
+        "latest_centroid_distance": 0.18,
+        "latest_window_centroid_distance": null,
+        "latest_tool_drift": null,
+        "baseline_size": 14
+      }
+    ]
+  }
+}

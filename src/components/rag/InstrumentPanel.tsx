@@ -15,8 +15,15 @@ import {
   Zap,
   Server
 } from 'lucide-react';
-import { ChatTurn, PlatformHealth, ApiTraceAlert } from '../../lib/ragTypes';
-import { adaptAgentLedger, adaptDriftSummary, ViewAgentLedgerRow, ViewDriftRow } from '../../lib/adapters';
+import { ChatTurn, PlatformHealth, ApiAlert, AgentDriftInfo } from '../../lib/ragTypes';
+import {
+  adaptAgentLedger,
+  adaptAlert,
+  adaptDriftSummary,
+  ViewAgentLedgerRow,
+  ViewAlert,
+  ViewDriftRow
+} from '../../lib/adapters';
 import { DatumDisplay } from './DatumDisplay';
 import { datum } from '../../lib/stateModel';
 import { riskTone, riskBadgeClasses, riskLabel } from '../../lib/riskTone';
@@ -25,9 +32,9 @@ interface InstrumentPanelProps {
   selectedTurn: ChatTurn | null;
   allTurns: ChatTurn[];
   platformHealth: PlatformHealth;
-  driftData: any[];
-  recentAlerts: ApiTraceAlert[];
-  onAcknowledgeAlert: (alertId: string) => Promise<void>;
+  driftData: AgentDriftInfo[];
+  recentAlerts: ApiAlert[];
+  onAcknowledgeAlert: (alertId: number) => Promise<void>;
   onNavigateToTrace: (traceId: string) => void;
 }
 
@@ -54,8 +61,11 @@ export const InstrumentPanel: React.FC<InstrumentPanelProps> = ({
   const driftRows: ViewDriftRow[] = adaptDriftSummary(driftData);
 
   // Alerts from selected turn + recent alerts
-  const turnAlerts: ApiTraceAlert[] = selectedTurn?.traceDetail?.alerts || [];
-  const combinedAlerts = [...turnAlerts, ...recentAlerts.filter(a => !turnAlerts.some(ta => ta.id === a.id))];
+  const turnAlerts: ApiAlert[] = selectedTurn?.traceDetail?.alerts || [];
+  const combinedAlerts: ViewAlert[] = [
+    ...turnAlerts,
+    ...recentAlerts.filter(a => !turnAlerts.some(ta => ta.id === a.id))
+  ].map(adaptAlert);
 
   // Retriever row specifically for tool-claim check
   const retrieverRow = ledgerRows.find(r => r.agentRole.toLowerCase() === 'retriever');
@@ -90,7 +100,8 @@ export const InstrumentPanel: React.FC<InstrumentPanelProps> = ({
             />
             <span className="text-neutral-400 text-[11px]">Evaluator Workers:</span>
             <span className={`font-semibold ${platformHealth.evaluatorHealthy ? 'text-emerald-300' : 'text-amber-300'}`}>
-              {platformHealth.workersAlive} alive (Queue: {platformHealth.queueDepth})
+              {platformHealth.workersAlive} alive
+              {platformHealth.queueDepth !== null && ` (Queue: ${platformHealth.queueDepth})`}
             </span>
           </div>
         </div>
@@ -378,11 +389,21 @@ export const InstrumentPanel: React.FC<InstrumentPanelProps> = ({
                 <div className="space-y-1 pt-1 text-[11px]">
                   <div className="flex items-center justify-between text-neutral-400">
                     <span>ASI:</span>
-                    <DatumDisplay datum={d.asi} format="percentage" />
+                    <DatumDisplay datum={d.asi} format="asi" />
                   </div>
-                  <div className="flex items-center justify-between text-neutral-400">
+                  <div
+                    className="flex items-center justify-between text-neutral-400"
+                    title="One output against the running centroid. Noisy by design; alerts do not use it."
+                  >
                     <span>Centroid Dist:</span>
                     <DatumDisplay datum={d.centroidDistance} />
+                  </div>
+                  <div
+                    className="flex items-center justify-between text-neutral-400"
+                    title="Baseline window against recent window. DRIFT_DETECTED alerts are raised on this."
+                  >
+                    <span>Window Dist:</span>
+                    <DatumDisplay datum={d.windowCentroidDistance} />
                   </div>
                   <div className="flex items-center justify-between text-neutral-400">
                     <span>Tool Drift:</span>
@@ -429,14 +450,14 @@ export const InstrumentPanel: React.FC<InstrumentPanelProps> = ({
                           : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                       }`}
                     >
-                      {alert.severity}
+                      {alert.severityLabel}
                     </span>
                     <span className="text-white font-semibold">{alert.type}</span>
                   </div>
                   <p className="text-[11px] text-neutral-300 leading-snug">{alert.message}</p>
                 </div>
 
-                {alert.status !== 'acknowledged' ? (
+                {!alert.acknowledged && !alert.resolved ? (
                   <button
                     onClick={() => onAcknowledgeAlert(alert.id)}
                     className="px-2 py-1 rounded bg-white/[0.06] hover:bg-white/15 text-neutral-300 hover:text-white text-[10px] border border-white/10 shrink-0 transition-colors"
@@ -446,7 +467,7 @@ export const InstrumentPanel: React.FC<InstrumentPanelProps> = ({
                 ) : (
                   <span className="text-[10px] text-emerald-400 flex items-center space-x-0.5 shrink-0">
                     <Check className="w-3 h-3" />
-                    <span>Acked</span>
+                    <span>{alert.resolved ? 'Resolved' : 'Acked'}</span>
                   </span>
                 )}
               </div>

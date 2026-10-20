@@ -1,0 +1,32 @@
+{
+  "agentpulse_commit": "79c2b524d361a44f193761ae3179779780ae4a6d",
+  "captured_on": "2026-10-20",
+  "regenerate": "scripts/capture_backend_fixtures.py --agentpulse <checkout>",
+  "stubbed": [
+    "the language model behind the chat service (recording fake; reply text is invented)",
+    "the evaluation worker (Evaluation, DriftRecord, WorkerHeartbeat rows inserted directly; their numbers are invented)"
+  ],
+  "files": [
+    "alert_patch",
+    "alert_patch_legacy_body",
+    "alert_patch_not_found",
+    "alerts",
+    "alerts_after_ack",
+    "alerts_after_legacy_patch",
+    "chat_200",
+    "chat_422",
+    "chat_502",
+    "chat_503",
+    "chat_corpus",
+    "chat_health",
+    "drift",
+    "health_evaluator_alive",
+    "health_evaluator_none",
+    "health_ready",
+    "trace_evaluated",
+    "trace_failed",
+    "trace_not_found",
+    "trace_pending",
+    "ws_new_span"
+  ]
+}

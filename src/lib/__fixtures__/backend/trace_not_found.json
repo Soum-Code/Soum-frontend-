@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/v1/traces/does-not-exist",
+  "status": 404,
+  "body": {
+    "detail": "Trace not found"
+  }
+}

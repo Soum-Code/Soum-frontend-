@@ -1,0 +1,13 @@
+{
+  "method": "WS",
+  "path": "/v1/ws/live",
+  "status": 101,
+  "body": {
+    "type": "new_span",
+    "trace_id": "c6d4d5ba895b4fe5b8341759420451d1",
+    "span_id": "fd237a22c9d14b58",
+    "agent_id": "retriever",
+    "status": "success",
+    "latency_ms": 0.29
+  }
+}

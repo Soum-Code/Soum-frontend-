@@ -1,6 +1,41 @@
 import { describe, it, expect } from 'vitest';
 import { adaptAgentLedger, adaptDriftSummary } from './adapters';
-import { ChatAgentRun, TraceDetailResponse } from './ragTypes';
+import { AgentDriftInfo, ChatAgentRun, SpanDetail, TraceDetailResponse } from './ragTypes';
+
+// Inputs in the backend's real shape. contract.test.ts holds the tests that run
+// against recorded responses; these cover the adapters' rules on small cases.
+const span = (overrides: Partial<SpanDetail>): SpanDetail => ({
+  span_id: 'sp-1',
+  parent_span_id: null,
+  agent_id: 'answerer',
+  agent_role: null,
+  event_type: 'agent_execution',
+  span_kind: 'LLM',
+  latency_ms: null,
+  status: 'success',
+  error_message: null,
+  model: null,
+  tokens_in: null,
+  tokens_out: null,
+  tool_name: null,
+  tool_args: null,
+  tool_result_summary: null,
+  input_summary: null,
+  output_summary: null,
+  start_time: null,
+  evaluation: null,
+  ...overrides,
+});
+
+const drift = (overrides: Partial<AgentDriftInfo>): AgentDriftInfo => ({
+  agent_id: 'retriever',
+  current_asi: null,
+  latest_centroid_distance: null,
+  latest_window_centroid_distance: null,
+  latest_tool_drift: null,
+  baseline_size: 0,
+  ...overrides,
+});
 
 describe('adapters', () => {
   describe('adaptAgentLedger', () => {
@@ -18,13 +53,18 @@ describe('adapters', () => {
 
     it('marks grounding risk as measured when span evaluation arrives', () => {
       const mockTrace: TraceDetailResponse = {
-        trace: { id: 'tr-1', timestamp: '2026-10-01 10:00:00', status: 'ok' },
+        trace: {
+          trace_id: 'tr-1',
+          pipeline_id: null,
+          service_name: 'rag_chat',
+          start_time: '2026-10-01T10:00:00',
+          end_time: null,
+          status: 'running',
+          total_spans: 1,
+          overall_risk_score: null
+        },
         spans: [
-          {
-            span_id: 'sp-1',
-            trace_id: 'tr-1',
-            agent_id: 'answerer',
-            role: 'answerer',
+          span({
             input_summary: 'Doc 1: Sales report',
             output_summary: 'Synthesized answer',
             evaluation: {
@@ -34,8 +74,9 @@ describe('adapters', () => {
               label: 'low_risk',
               evaluation_stage: 'stage2'
             }
-          }
-        ]
+          })
+        ],
+        alerts: []
       };
 
       const rows = adaptAgentLedger(agentsRan, mockTrace, false, false);
@@ -59,7 +100,7 @@ describe('adapters', () => {
 
   describe('adaptDriftSummary', () => {
     it('enforces strict 32-span baseline gate and reports warming up', () => {
-      const raw = [{ agent_id: 'retriever', baseline_size: 14, asi: 0.12 }];
+      const raw = [drift({ baseline_size: 14, current_asi: 12 })];
       const adapted = adaptDriftSummary(raw);
 
       expect(adapted[0].isWarmedUp).toBe(false);
@@ -70,12 +111,12 @@ describe('adapters', () => {
     });
 
     it('measures drift only once baseline >= 32 spans', () => {
-      const raw = [{ agent_id: 'retriever', baseline_size: 32, asi: 0.045 }];
+      const raw = [drift({ baseline_size: 32, current_asi: 87.5 })];
       const adapted = adaptDriftSummary(raw);
 
       expect(adapted[0].isWarmedUp).toBe(true);
       expect(adapted[0].asi.status).toBe('measured');
-      expect(adapted[0].asi.value).toBe(0.045);
+      expect(adapted[0].asi.value).toBe(87.5);
     });
   });
 });
