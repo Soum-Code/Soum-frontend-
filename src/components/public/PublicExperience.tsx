@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowRight,
@@ -56,6 +56,7 @@ import {
   ChalkSurfacePreset,
 } from '../../types';
 import { UnifiedPaletteBar } from '../common/UnifiedPaletteBar';
+import { getChalkTextMetrics } from '../../lib/colorPalettes';
 
 import { User as FirebaseUser } from 'firebase/auth';
 
@@ -340,27 +341,58 @@ jobs:
           fail-on-regression: true`
   };
 
-  const customChalkStyle = (palette === 'chalk' && chalkSurface === 'custom' && chalkCustomColor) ? ({
-    '--chalk-surface-bg': chalkCustomColor,
-    '--chalk-header-bg': `${chalkCustomColor}f0`,
-    '--chalk-header-gradient': `linear-gradient(180deg, ${chalkCustomColor} 0%, ${chalkCustomColor}e6 100%)`,
-    '--chalk-card-bg': '#ffffff',
-    '--chalk-card-gradient': `linear-gradient(135deg, #ffffff 0%, ${chalkCustomColor} 100%)`,
-    '--chalk-border': 'rgba(15, 23, 42, 0.12)',
-    '--chalk-border-hover': 'rgba(15, 23, 42, 0.22)',
-    '--chalk-grid-dot': 'rgba(15, 23, 42, 0.16)',
-    '--chalk-grid-line': 'rgba(15, 23, 42, 0.07)',
-    '--chalk-mote-1': 'rgba(15, 23, 42, 0.25)',
-    '--chalk-mote-2': 'rgba(15, 23, 42, 0.2)',
-    '--chalk-mote-3': 'rgba(15, 23, 42, 0.15)',
-  } as React.CSSProperties) : undefined;
+  const activeCustomStyle = useMemo(() => {
+    if (palette === 'chalk' && chalkSurface === 'custom' && chalkCustomColor) {
+      const metrics = getChalkTextMetrics('custom', chalkCustomColor);
+      return {
+        '--chalk-surface-bg': chalkCustomColor,
+        '--chalk-header-bg': `${chalkCustomColor}f0`,
+        '--chalk-header-gradient': `linear-gradient(180deg, #ffffff 0%, ${chalkCustomColor}ea 100%)`,
+        '--chalk-card-bg': '#ffffff',
+        '--chalk-card-gradient': `linear-gradient(135deg, #ffffff 0%, ${chalkCustomColor} 100%)`,
+        '--chalk-border': 'rgba(15, 23, 42, 0.16)',
+        '--chalk-border-hover': 'rgba(15, 23, 42, 0.28)',
+        '--chalk-grid-dot': 'rgba(15, 23, 42, 0.16)',
+        '--chalk-grid-line': 'rgba(15, 23, 42, 0.07)',
+        '--chalk-mote-1': 'rgba(15, 23, 42, 0.25)',
+        '--chalk-mote-2': 'rgba(15, 23, 42, 0.2)',
+        '--chalk-mote-3': 'rgba(15, 23, 42, 0.15)',
+        '--chalk-text-base-rgb': metrics.baseRgb,
+        '--chalk-text-opacity-primary': metrics.opacityPrimary.toString(),
+        '--chalk-text-opacity-secondary': metrics.opacitySecondary.toString(),
+        '--chalk-text-opacity-muted': metrics.opacityMuted.toString(),
+        '--chalk-text-primary': metrics.textPrimary,
+        '--chalk-text-secondary': metrics.textSecondary,
+        '--chalk-text-muted': metrics.textMuted,
+      } as React.CSSProperties;
+    }
+    if (palette === 'butter' && butterPreset === 'custom' && butterCustomColor) {
+      return {
+        '--butter-surface-bg': butterCustomColor,
+        '--butter-header-bg': `${butterCustomColor}f0`,
+        '--butter-card-bg': '#ffffff',
+        '--butter-card-gradient': `linear-gradient(135deg, #ffffff 0%, ${butterCustomColor} 100%)`,
+        '--butter-border': 'rgba(217, 119, 6, 0.25)',
+        '--butter-border-hover': 'rgba(180, 83, 9, 0.45)',
+      } as React.CSSProperties;
+    }
+    if (palette === 'dark' && darkPreset === 'custom' && darkCustomColor) {
+      return {
+        '--dark-surface-bg': darkCustomColor,
+        '--dark-card-bg': darkCustomColor,
+        '--dark-border': 'rgba(255, 255, 255, 0.15)',
+        '--dark-border-hover': 'rgba(255, 255, 255, 0.32)',
+      } as React.CSSProperties;
+    }
+    return undefined;
+  }, [palette, chalkSurface, chalkCustomColor, butterPreset, butterCustomColor, darkPreset, darkCustomColor]);
 
   return (
     <div
       data-palette={palette}
       data-palette-preset={palette === 'dark' ? darkPreset : palette === 'butter' ? butterPreset : chalkSurface}
       data-chalk-surface={palette === 'chalk' ? chalkSurface : undefined}
-      style={customChalkStyle}
+      style={activeCustomStyle}
       className={`min-h-screen relative overflow-x-hidden selection:bg-neutral-950 selection:text-yellow-300 ${
         palette === 'butter'
           ? 'palette-butter text-neutral-950'

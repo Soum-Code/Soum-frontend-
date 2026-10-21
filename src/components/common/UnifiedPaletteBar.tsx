@@ -176,9 +176,10 @@ export const UnifiedPaletteBar: React.FC<UnifiedPaletteBarProps> = ({
 
         <button
           onClick={() => onSelectPalette('chalk')}
+          data-keep-white="true"
           className={`px-2.5 py-1 rounded-full transition-all flex items-center space-x-1 cursor-pointer ${
             palette === 'chalk'
-              ? 'bg-neutral-900 text-white font-bold shadow-xs scale-102'
+              ? 'bg-neutral-900 !text-white font-bold shadow-xs scale-102'
               : palette === 'butter'
               ? 'text-neutral-700 hover:text-black hover:bg-black/5'
               : 'text-neutral-400 hover:text-white hover:bg-white/[0.08]'
@@ -187,7 +188,7 @@ export const UnifiedPaletteBar: React.FC<UnifiedPaletteBarProps> = ({
           aria-label="Switch to Chalk Palette"
         >
           <Sun className="w-3 h-3 text-amber-400" />
-          <span>Chalk</span>
+          <span className={palette === 'chalk' ? '!text-white font-bold' : ''}>Chalk</span>
         </button>
       </div>
 

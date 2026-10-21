@@ -71,6 +71,11 @@ export const INITIAL_AGENTS: Agent[] = [
   }
 ];
 
+const getRecentTimestamp = (secondsAgo: number): string => {
+  const d = new Date(Date.now() - secondsAgo * 1000);
+  return d.toISOString().replace('T', ' ').slice(0, 19);
+};
+
 export const INITIAL_TRACES: Trace[] = [
   {
     id: 'tr-98410',
@@ -82,7 +87,7 @@ export const INITIAL_TRACES: Trace[] = [
     durationMs: 2840,
     totalTokens: 4210,
     cost: 0.0084,
-    timestamp: '2026-08-31 10:32:15',
+    timestamp: getRecentTimestamp(2),
     inputPreview: 'Aggregate Q3 customer retention cohort by geographic tier and cloud usage bucket',
     outputPreview: 'Execution aborted: schema resolution conflict in table `analytics.fact_cohort_v3`. Column `usage_tier_id` not found.',
     errorSummary: 'Dialect mismatch & schema hallucination in generated Trino query',
@@ -190,7 +195,7 @@ export const INITIAL_TRACES: Trace[] = [
     durationMs: 1180,
     totalTokens: 3100,
     cost: 0.0062,
-    timestamp: '2026-08-31 10:31:02',
+    timestamp: getRecentTimestamp(72),
     inputPreview: 'Process physical therapy reimbursement claim #CLM-8924 for policyholder Jordan Vance',
     outputPreview: 'Claim approved provisionally for $420.00. Warning: Missing therapist clinic NPI number on OCR receipt.',
     errorSummary: 'Confidence threshold warning on receipt OCR therapist certification',
@@ -269,7 +274,7 @@ export const INITIAL_TRACES: Trace[] = [
     durationMs: 1420,
     totalTokens: 5280,
     cost: 0.012,
-    timestamp: '2026-08-31 10:29:44',
+    timestamp: getRecentTimestamp(185),
     inputPreview: 'Audit pull request #1408 on repo `payment-gateway`: verify HMAC header sanitization',
     outputPreview: 'No critical vulnerabilities detected. 1 medium advisory: non-constant-time string comparison in `verify_signature`.',
     tags: ['security-audit', 'pr-1408', 'cryptography'],
@@ -345,7 +350,7 @@ export const INITIAL_TRACES: Trace[] = [
     durationMs: 390,
     totalTokens: 1840,
     cost: 0.0036,
-    timestamp: '2026-08-31 10:28:10',
+    timestamp: getRecentTimestamp(320),
     inputPreview: 'Monitor ETH-USDC order book divergence between Uniswap v3 and Binance spot',
     outputPreview: 'Spread 0.42% exceeds gas threshold (0.28%). Flash loan simulation confirmed +$1,240 net profit.',
     tags: ['market-maker', 'arbitrage', 'eth-usdc'],

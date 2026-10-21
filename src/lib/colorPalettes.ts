@@ -4,6 +4,7 @@ import {
   DarkSurfacePreset,
   ButterSurfacePreset,
   SurfacePresetConfig,
+  ChalkTextMetrics,
 } from '../types';
 
 export const CHALK_PRESETS: SurfacePresetConfig[] = [
@@ -17,6 +18,10 @@ export const CHALK_PRESETS: SurfacePresetConfig[] = [
     borderHex: '#cbd5e1',
     accentHex: '#0284c7',
     tag: 'Crisp & Clean',
+    textBaseRgb: '15, 23, 42',
+    textOpacityPrimary: 0.96,
+    textOpacitySecondary: 0.82,
+    textOpacityMuted: 0.68,
   },
   {
     id: 'sepia-slate',
@@ -28,6 +33,10 @@ export const CHALK_PRESETS: SurfacePresetConfig[] = [
     borderHex: '#d8cdbf',
     accentHex: '#b45309',
     tag: 'Eye Comfort',
+    textBaseRgb: '35, 24, 15',
+    textOpacityPrimary: 0.97,
+    textOpacitySecondary: 0.84,
+    textOpacityMuted: 0.70,
   },
   {
     id: 'emerald-graphite',
@@ -39,6 +48,10 @@ export const CHALK_PRESETS: SurfacePresetConfig[] = [
     borderHex: '#c4d6c9',
     accentHex: '#059669',
     tag: 'Academic Slate',
+    textBaseRgb: '13, 36, 25',
+    textOpacityPrimary: 0.97,
+    textOpacitySecondary: 0.83,
+    textOpacityMuted: 0.69,
   },
   {
     id: 'blueprint-mist',
@@ -50,6 +63,10 @@ export const CHALK_PRESETS: SurfacePresetConfig[] = [
     borderHex: '#bfd6ee',
     accentHex: '#2563eb',
     tag: 'Technical Draft',
+    textBaseRgb: '15, 39, 68',
+    textOpacityPrimary: 0.98,
+    textOpacitySecondary: 0.85,
+    textOpacityMuted: 0.72,
   },
 ];
 
@@ -201,6 +218,129 @@ export function getContrastRatio(hex1: string, hex2: string): number {
   return (brightest + 0.05) / (darkest + 0.05);
 }
 
+/**
+ * Computes contrast ratio of text with alpha opacity composited onto a solid background.
+ * Uses official W3C WCAG 2.1 relative luminance and contrast formula.
+ */
+export function getBlendedContrastRatio(
+  textHexOrRgb: string,
+  alpha: number,
+  bgHex: string
+): number {
+  let tr = 15;
+  let tg = 23;
+  let tb = 42;
+
+  if (textHexOrRgb.includes(',')) {
+    const parts = textHexOrRgb.split(',').map((p) => parseInt(p.trim(), 10));
+    if (parts.length >= 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      tr = parts[0];
+      tg = parts[1];
+      tb = parts[2];
+    }
+  } else {
+    const cleanText = textHexOrRgb.replace('#', '');
+    if (cleanText.length === 6) {
+      tr = parseInt(cleanText.substring(0, 2), 16);
+      tg = parseInt(cleanText.substring(2, 4), 16);
+      tb = parseInt(cleanText.substring(4, 6), 16);
+    }
+  }
+
+  const cleanBg = bgHex.replace('#', '');
+  let bgr = 246;
+  let bgg = 248;
+  let bgb = 251;
+  if (cleanBg.length === 6) {
+    bgr = parseInt(cleanBg.substring(0, 2), 16);
+    bgg = parseInt(cleanBg.substring(2, 4), 16);
+    bgb = parseInt(cleanBg.substring(4, 6), 16);
+  }
+
+  const clampedAlpha = Math.max(0, Math.min(1, alpha));
+  const compR = Math.round(tr * clampedAlpha + bgr * (1 - clampedAlpha));
+  const compG = Math.round(tg * clampedAlpha + bgg * (1 - clampedAlpha));
+  const compB = Math.round(tb * clampedAlpha + bgb * (1 - clampedAlpha));
+
+  const compHex =
+    '#' +
+    [compR, compG, compB]
+      .map((c) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0'))
+      .join('');
+
+  return getContrastRatio(compHex, bgHex);
+}
+
+/**
+ * Calculates dynamically tuned text opacity tokens for Chalk presets,
+ * ensuring strict WCAG 2.1 AA compliance (>= 4.5:1 for normal text).
+ */
+export function getChalkTextMetrics(
+  presetId: string,
+  customColor?: string
+): ChalkTextMetrics {
+  let baseRgb = '15, 23, 42';
+  let opacityPrimary = 0.96;
+  let opacitySecondary = 0.82;
+  let opacityMuted = 0.68;
+  let surfaceBg = '#f6f8fb';
+
+  if (presetId === 'custom' && customColor) {
+    surfaceBg = customColor;
+    const bgLum = getLuminance(customColor);
+    if (bgLum < 0.25) {
+      // Dark custom background
+      baseRgb = '248, 250, 252';
+      opacityPrimary = 0.98;
+      opacitySecondary = 0.86;
+      opacityMuted = 0.72;
+    } else {
+      // Light custom background
+      baseRgb = '15, 23, 42';
+      const lumDeficit = Math.max(0, 0.94 - bgLum);
+      opacityPrimary = 0.98;
+      opacitySecondary = Math.min(0.92, Math.max(0.80, 0.82 + lumDeficit * 0.4));
+      opacityMuted = Math.min(0.85, Math.max(0.68, 0.68 + lumDeficit * 0.6));
+    }
+  } else {
+    const preset = CHALK_PRESETS.find((p) => p.id === presetId) || CHALK_PRESETS[0];
+    surfaceBg = preset.bgHex;
+    baseRgb = preset.textBaseRgb || '15, 23, 42';
+    opacityPrimary = preset.textOpacityPrimary ?? 0.96;
+    opacitySecondary = preset.textOpacitySecondary ?? 0.82;
+    opacityMuted = preset.textOpacityMuted ?? 0.68;
+  }
+
+  // Ensure WCAG 2.1 AA compliance: muted text must have contrast ratio >= 4.5:1
+  let contrastMuted = getBlendedContrastRatio(baseRgb, opacityMuted, surfaceBg);
+  while (contrastMuted < 4.5 && opacityMuted < 1.0) {
+    opacityMuted = Math.min(1.0, +(opacityMuted + 0.02).toFixed(2));
+    contrastMuted = getBlendedContrastRatio(baseRgb, opacityMuted, surfaceBg);
+  }
+
+  let contrastSecondary = getBlendedContrastRatio(baseRgb, opacitySecondary, surfaceBg);
+  while (contrastSecondary < 4.5 && opacitySecondary < 1.0) {
+    opacitySecondary = Math.min(1.0, +(opacitySecondary + 0.02).toFixed(2));
+    contrastSecondary = getBlendedContrastRatio(baseRgb, opacitySecondary, surfaceBg);
+  }
+
+  const contrastPrimary = getBlendedContrastRatio(baseRgb, opacityPrimary, surfaceBg);
+
+  return {
+    baseRgb,
+    opacityPrimary,
+    opacitySecondary,
+    opacityMuted,
+    textPrimary: `rgba(${baseRgb}, ${opacityPrimary})`,
+    textSecondary: `rgba(${baseRgb}, ${opacitySecondary})`,
+    textMuted: `rgba(${baseRgb}, ${opacityMuted})`,
+    contrastRatioPrimary: contrastPrimary,
+    contrastRatioSecondary: contrastSecondary,
+    contrastRatioMuted: contrastMuted,
+    isWcagAACompliant: contrastMuted >= 4.5 && contrastSecondary >= 4.5 && contrastPrimary >= 4.5,
+  };
+}
+
 export function getPresetConfig(
   palette: ColorPalette,
   presetId: string
@@ -234,34 +374,60 @@ export function applyThemeVariables(
   let headerGradient = '';
 
   if (palette === 'chalk') {
+    let borderHover = '#94a3b8';
     if (presetId === 'custom' && customColor) {
       bgHex = customColor;
       cardHex = '#ffffff';
-      borderHex = 'rgba(15, 23, 42, 0.14)';
+      borderHex = 'rgba(15, 23, 42, 0.16)';
+      borderHover = 'rgba(15, 23, 42, 0.28)';
       accentHex = '#0284c7';
       glowHex = 'rgba(2, 132, 199, 0.20)';
       cardGradient = `linear-gradient(135deg, #ffffff 0%, ${customColor} 100%)`;
-      headerGradient = `linear-gradient(180deg, rgba(255,255,255,0.92) 0%, ${customColor}e6 100%)`;
+      headerGradient = `linear-gradient(180deg, rgba(255,255,255,0.96) 0%, ${customColor}ea 100%)`;
     } else {
       const preset = CHALK_PRESETS.find((p) => p.id === presetId) || CHALK_PRESETS[0];
       bgHex = preset.bgHex;
       cardHex = preset.cardHex;
       borderHex = preset.borderHex;
+      borderHover =
+        preset.id === 'sepia-slate'
+          ? '#b8a794'
+          : preset.id === 'emerald-graphite'
+          ? '#95b39c'
+          : preset.id === 'blueprint-mist'
+          ? '#93c5fd'
+          : '#94a3b8';
       accentHex = preset.accentHex;
       glowHex = `${preset.accentHex}33`;
       cardGradient = `linear-gradient(135deg, #ffffff 0%, ${preset.bgHex} 100%)`;
-      headerGradient = `linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, ${preset.bgHex}ea 100%)`;
+      headerGradient = `linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, ${preset.bgHex}ea 100%)`;
     }
     textPrimary = '#0f172a';
     textSecondary = '#334155';
     textMuted = '#64748b';
 
+    const metrics = getChalkTextMetrics(presetId, customColor);
+
     root.style.setProperty('--chalk-surface-bg', bgHex);
     root.style.setProperty('--chalk-header-bg', `${bgHex}f0`);
     root.style.setProperty('--chalk-card-bg', cardHex);
     root.style.setProperty('--chalk-border', borderHex);
+    root.style.setProperty('--chalk-border-hover', borderHover);
     root.style.setProperty('--chalk-accent', accentHex);
     root.style.setProperty('--chalk-card-gradient', cardGradient);
+    root.style.setProperty('--chalk-header-gradient', headerGradient);
+
+    // Dynamic Chalk Text Legibility variables (WCAG 2.1 AA compliant)
+    root.style.setProperty('--chalk-text-base-rgb', metrics.baseRgb);
+    root.style.setProperty('--chalk-text-opacity-primary', metrics.opacityPrimary.toString());
+    root.style.setProperty('--chalk-text-opacity-secondary', metrics.opacitySecondary.toString());
+    root.style.setProperty('--chalk-text-opacity-muted', metrics.opacityMuted.toString());
+    root.style.setProperty('--chalk-text-primary', metrics.textPrimary);
+    root.style.setProperty('--chalk-text-secondary', metrics.textSecondary);
+    root.style.setProperty('--chalk-text-muted', metrics.textMuted);
+    root.style.setProperty('--theme-text-opacity-primary', metrics.opacityPrimary.toString());
+    root.style.setProperty('--theme-text-opacity-secondary', metrics.opacitySecondary.toString());
+    root.style.setProperty('--theme-text-opacity-muted', metrics.opacityMuted.toString());
     root.style.setProperty('--chalk-header-gradient', headerGradient);
   } else if (palette === 'butter') {
     if (presetId === 'custom' && customColor) {
@@ -374,22 +540,31 @@ export function applyThemeVariables(
     root.style.setProperty('--lg-header-border', 'rgba(217, 119, 6, 0.20)');
   } else {
     // Chalk
+    const borderHover =
+      presetId === 'sepia-slate'
+        ? '#b8a794'
+        : presetId === 'emerald-graphite'
+        ? '#95b39c'
+        : presetId === 'blueprint-mist'
+        ? '#93c5fd'
+        : '#94a3b8';
+
     root.style.setProperty(
       '--lg-card-bg',
-      cardGradient || 'linear-gradient(135deg, rgba(255, 255, 255, 0.88) 0%, rgba(248, 250, 252, 0.62) 40%, rgba(241, 245, 249, 0.76) 100%)'
+      cardGradient || 'linear-gradient(135deg, #ffffff 0%, rgba(241, 245, 249, 0.90) 100%)'
     );
     root.style.setProperty(
       '--lg-card-hover-bg',
-      'linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.75) 40%, rgba(241, 245, 249, 0.85) 100%)'
+      'linear-gradient(135deg, #ffffff 0%, rgba(248, 250, 252, 0.95) 100%)'
     );
-    root.style.setProperty('--lg-card-border', borderHex || 'rgba(203, 213, 225, 0.85)');
-    root.style.setProperty('--lg-card-border-hover', 'rgba(148, 163, 184, 0.6)');
-    root.style.setProperty('--lg-card-shadow', '0 16px 36px -8px rgba(15, 23, 42, 0.07), 0 4px 14px -3px rgba(15, 23, 42, 0.04)');
+    root.style.setProperty('--lg-card-border', borderHex || '#cbd5e1');
+    root.style.setProperty('--lg-card-border-hover', borderHover);
+    root.style.setProperty('--lg-card-shadow', '0 14px 32px -8px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04)');
     root.style.setProperty('--lg-card-bevel', 'inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.95)');
-    root.style.setProperty('--lg-pill-bg', 'linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(241, 245, 249, 0.75) 100%)');
-    root.style.setProperty('--lg-pill-border', 'rgba(203, 213, 225, 0.8)');
+    root.style.setProperty('--lg-pill-bg', 'linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(241, 245, 249, 0.85) 100%)');
+    root.style.setProperty('--lg-pill-border', borderHex || '#cbd5e1');
     root.style.setProperty('--lg-pill-text', '#0f172a');
-    root.style.setProperty('--lg-header-bg', headerGradient || `linear-gradient(180deg, ${bgHex}f0 0%, ${bgHex}d8 100%)`);
-    root.style.setProperty('--lg-header-border', 'rgba(203, 213, 225, 0.8)');
+    root.style.setProperty('--lg-header-bg', headerGradient || `linear-gradient(180deg, ${bgHex}f5 0%, ${bgHex}e6 100%)`);
+    root.style.setProperty('--lg-header-border', borderHex || '#cbd5e1');
   }
 }

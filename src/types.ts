@@ -16,6 +16,24 @@ export interface SurfacePresetConfig {
   borderHex: string;
   accentHex: string;
   tag: string;
+  textBaseRgb?: string;
+  textOpacityPrimary?: number;
+  textOpacitySecondary?: number;
+  textOpacityMuted?: number;
+}
+
+export interface ChalkTextMetrics {
+  baseRgb: string;
+  opacityPrimary: number;
+  opacitySecondary: number;
+  opacityMuted: number;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  contrastRatioPrimary: number;
+  contrastRatioSecondary: number;
+  contrastRatioMuted: number;
+  isWcagAACompliant: boolean;
 }
 
 export interface ChalkSurfaceConfig {

@@ -6,6 +6,8 @@ import {
   getPresetConfig,
   getLuminance,
   getContrastRatio,
+  getBlendedContrastRatio,
+  getChalkTextMetrics,
   applyThemeVariables,
 } from './colorPalettes';
 
@@ -57,6 +59,56 @@ describe('colorPalettes', () => {
     });
   });
 
+  describe('Chalk Text Legibility & WCAG 2.1 AA Compliance', () => {
+    it('computes blended contrast ratio with alpha opacity correctly', () => {
+      const solidContrast = getBlendedContrastRatio('15, 23, 42', 1.0, '#f6f8fb');
+      expect(solidContrast).toBeGreaterThan(15.0);
+
+      const mutedContrast = getBlendedContrastRatio('15, 23, 42', 0.68, '#f6f8fb');
+      // Must be >= 4.5:1 for WCAG 2.1 AA
+      expect(mutedContrast).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('ensures all chalk surface presets meet WCAG 2.1 AA contrast requirements', () => {
+      const presets = ['classic-white', 'sepia-slate', 'emerald-graphite', 'blueprint-mist'];
+
+      presets.forEach((presetId) => {
+        const metrics = getChalkTextMetrics(presetId);
+
+        // Muted text must satisfy WCAG 2.1 AA normal text contrast (>= 4.5:1)
+        expect(metrics.contrastRatioMuted).toBeGreaterThanOrEqual(4.5);
+
+        // Secondary text must satisfy WCAG 2.1 AA (and AAA >= 7:1)
+        expect(metrics.contrastRatioSecondary).toBeGreaterThanOrEqual(7.0);
+
+        // Primary text must achieve exceptional high-contrast readability (>= 12:1)
+        expect(metrics.contrastRatioPrimary).toBeGreaterThanOrEqual(12.0);
+
+        expect(metrics.isWcagAACompliant).toBe(true);
+        expect(metrics.textPrimary).toContain('rgba(');
+        expect(metrics.textSecondary).toContain('rgba(');
+        expect(metrics.textMuted).toContain('rgba(');
+      });
+    });
+
+    it('dynamically scales opacity for blueprint-mist to compensate for darker cyan background', () => {
+      const classicMetrics = getChalkTextMetrics('classic-white');
+      const blueprintMetrics = getChalkTextMetrics('blueprint-mist');
+
+      // Blueprint Mist has a deeper cyan tone (#e7eff7 vs #f6f8fb), requiring higher opacity for legibility
+      expect(blueprintMetrics.opacityMuted).toBeGreaterThan(classicMetrics.opacityMuted);
+      expect(blueprintMetrics.contrastRatioMuted).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('dynamically adjusts opacity and maintains WCAG 2.1 AA for custom chalk colors', () => {
+      // Testing with a pale lavender custom surface
+      const customMetrics = getChalkTextMetrics('custom', '#e9e4f0');
+      expect(customMetrics.isWcagAACompliant).toBe(true);
+      expect(customMetrics.contrastRatioMuted).toBeGreaterThanOrEqual(4.5);
+      expect(customMetrics.contrastRatioPrimary).toBeGreaterThanOrEqual(10.0);
+    });
+  });
+
   describe('applyThemeVariables', () => {
     it('applies dark preset tokens dynamically to documentElement style', () => {
       applyThemeVariables('dark', 'midnight-sapphire');
@@ -77,13 +129,36 @@ describe('colorPalettes', () => {
       expect(mockStyle['--theme-text-primary']).toBe('#1c1917');
     });
 
-    it('applies chalk preset tokens dynamically to documentElement style', () => {
+    it('applies chalk preset tokens dynamically including opacity variables to documentElement style', () => {
       applyThemeVariables('chalk', 'sepia-slate');
 
       expect(mockStyle['--theme-bg']).toBe('#f5efe4');
       expect(mockStyle['--theme-accent']).toBe('#b45309');
       expect(mockStyle['--chalk-surface-bg']).toBe('#f5efe4');
       expect(mockStyle['--theme-text-primary']).toBe('#0f172a');
+
+      // Chalk dynamic text opacity variables
+      expect(mockStyle['--chalk-text-base-rgb']).toBe('35, 24, 15');
+      expect(mockStyle['--chalk-text-opacity-primary']).toBe('0.97');
+      expect(mockStyle['--chalk-text-opacity-secondary']).toBe('0.84');
+      expect(mockStyle['--chalk-text-opacity-muted']).toBe('0.7');
+      expect(mockStyle['--chalk-text-primary']).toBe('rgba(35, 24, 15, 0.97)');
+      expect(mockStyle['--chalk-text-secondary']).toBe('rgba(35, 24, 15, 0.84)');
+      expect(mockStyle['--chalk-text-muted']).toBe('rgba(35, 24, 15, 0.7)');
+      expect(mockStyle['--theme-text-opacity-primary']).toBe('0.97');
+      expect(mockStyle['--theme-text-opacity-secondary']).toBe('0.84');
+      expect(mockStyle['--theme-text-opacity-muted']).toBe('0.7');
+    });
+
+    it('applies classic-white chalk preset variables properly', () => {
+      applyThemeVariables('chalk', 'classic-white');
+
+      expect(mockStyle['--chalk-surface-bg']).toBe('#f6f8fb');
+      expect(mockStyle['--chalk-text-base-rgb']).toBe('15, 23, 42');
+      expect(mockStyle['--chalk-text-opacity-primary']).toBe('0.96');
+      expect(mockStyle['--chalk-text-opacity-secondary']).toBe('0.82');
+      expect(mockStyle['--chalk-text-opacity-muted']).toBe('0.68');
+      expect(mockStyle['--chalk-text-primary']).toBe('rgba(15, 23, 42, 0.96)');
     });
 
     it('applies custom user-specified colors seamlessly', () => {

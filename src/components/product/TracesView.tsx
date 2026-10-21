@@ -22,10 +22,13 @@ import {
   ArrowUpDown,
   PlusCircle,
   Copy,
+  ClipboardCopy,
+  ClipboardCheck,
   Check,
   Bot,
   Download,
   FileSpreadsheet,
+  FileJson,
   Filter,
   X,
   Keyboard,
@@ -38,7 +41,18 @@ import {
   Timer
 } from 'lucide-react';
 import { Trace, Span, EvaluatorResult, ChronologicalSortOrder } from '../../types';
-import { parseDateTimeToMs } from '../../utils/dateUtils';
+import {
+  parseDateTimeToMs,
+  formatRelativeTime,
+  formatFullRelativeTime,
+  getTimeDisplayInfo
+} from '../../utils/dateUtils';
+import {
+  downloadTraceAsJson,
+  copyTraceIdToClipboard,
+  copyTraceLogBodyToClipboard,
+  copyTextToClipboard
+} from '../../utils/traceExport';
 
 export type TraceStatusFilter = 'all' | 'ok' | 'warning' | 'error';
 export type TraceDurationPreset = 'all' | 'fast' | 'moderate' | 'slow' | 'long' | 'custom';
@@ -107,11 +121,25 @@ export const TracesView: React.FC<TracesViewProps> = ({
   const [sortOption, setSortOption] = useState<TraceSortOption>('timestamp-desc');
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [copiedTraceId, setCopiedTraceId] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<{ traceId: string; type: 'id' | 'fullLog'; label: string } | null>(null);
+  const [isCopyMenuOpen, setIsCopyMenuOpen] = useState(false);
+  const [copiedSpanPayload, setCopiedSpanPayload] = useState<string | null>(null);
   const [curatedSuccess, setCuratedSuccess] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [jsonExportSuccessId, setJsonExportSuccessId] = useState<string | null>(null);
   const [isDetailsFlash, setIsDetailsFlash] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 8;
+  const [timeFormatMode, setTimeFormatMode] = useState<'relative' | 'absolute' | 'dual'>('relative');
+  const [currentTimeMs, setCurrentTimeMs] = useState<number>(Date.now());
+
+  // Periodic time ticker to keep relative time displays live (e.g., "2s ago" -> "4s ago")
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTimeMs(Date.now());
+    }, 2000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Auto-scroll state for trace list stream
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
@@ -123,6 +151,8 @@ export const TracesView: React.FC<TracesViewProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const copyMenuRef = useRef<HTMLDivElement>(null);
+  const copyButtonRef = useRef<HTMLButtonElement>(null);
   const traceItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const traceListContainerRef = useRef<HTMLDivElement>(null);
   const detailsRef = useRef<HTMLDivElement>(null);
@@ -156,6 +186,27 @@ export const TracesView: React.FC<TracesViewProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isFilterDropdownOpen]);
+
+  // Close Copy menu on outside click
+  useEffect(() => {
+    const handleClickOutsideCopy = (e: MouseEvent) => {
+      if (
+        copyMenuRef.current &&
+        !copyMenuRef.current.contains(e.target as Node) &&
+        copyButtonRef.current &&
+        !copyButtonRef.current.contains(e.target as Node)
+      ) {
+        setIsCopyMenuOpen(false);
+      }
+    };
+
+    if (isCopyMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutsideCopy);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideCopy);
+    };
+  }, [isCopyMenuOpen]);
 
   // Real-time status counts across active agent scope
   const statusCounts = useMemo(() => {
@@ -302,6 +353,12 @@ export const TracesView: React.FC<TracesViewProps> = ({
     s => s.status === 'error' || s.status === 'warning' || s.evaluatorResults?.some(e => !e.passed)
   ) || [];
 
+  // Full time info and relative time formatting for selected trace
+  const selectedTraceTime = useMemo(
+    () => (currentTrace ? getTimeDisplayInfo(currentTrace.timestamp, currentTimeMs) : null),
+    [currentTrace?.timestamp, currentTimeMs]
+  );
+
   // Automatically expand and highlight any spans marked as 'warning' or 'error' immediately upon selecting a trace
   useEffect(() => {
     if (!currentTrace) return;
@@ -406,6 +463,43 @@ export const TracesView: React.FC<TracesViewProps> = ({
       onCurateToDataset(currentSpan, currentTrace);
       setCuratedSuccess(true);
       setTimeout(() => setCuratedSuccess(false), 2500);
+    }
+  };
+
+  const handleCopyTraceId = async (traceId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const success = await copyTraceIdToClipboard(traceId);
+    if (success) {
+      setCopiedTraceId(traceId);
+      setCopyFeedback({ traceId, type: 'id', label: 'Trace ID' });
+      setIsCopyMenuOpen(false);
+      setTimeout(() => {
+        setCopiedTraceId(prev => (prev === traceId ? null : prev));
+        setCopyFeedback(prev => (prev?.traceId === traceId && prev.type === 'id' ? null : prev));
+      }, 2000);
+    }
+  };
+
+  const handleCopyTraceLogBody = async (targetTrace: Trace, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const success = await copyTraceLogBodyToClipboard(targetTrace);
+    if (success) {
+      setCopyFeedback({ traceId: targetTrace.id, type: 'fullLog', label: 'Full Log Body' });
+      setIsCopyMenuOpen(false);
+      setTimeout(() => {
+        setCopyFeedback(prev => (prev?.traceId === targetTrace.id && prev.type === 'fullLog' ? null : prev));
+      }, 2200);
+    }
+  };
+
+  const handleCopySpanText = async (text: string, identifier: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const success = await copyTextToClipboard(text);
+    if (success) {
+      setCopiedSpanPayload(identifier);
+      setTimeout(() => {
+        setCopiedSpanPayload(prev => (prev === identifier ? null : prev));
+      }, 2000);
     }
   };
 
@@ -557,10 +651,26 @@ export const TracesView: React.FC<TracesViewProps> = ({
         setViewPerspective('evidence');
       }
 
-      // C: Curate span into dataset
+      // Y: Copy trace ID; Shift+Y: Copy full trace log body
+      if (e.key.toLowerCase() === 'y' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        if (currentTrace) {
+          if (e.shiftKey) {
+            handleCopyTraceLogBody(currentTrace);
+          } else {
+            handleCopyTraceId(currentTrace.id);
+          }
+        }
+      }
+
+      // C: Curate span into dataset; Shift+C: Copy full log body
       if (e.key.toLowerCase() === 'c' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        handleCurate();
+        if (e.shiftKey && currentTrace) {
+          handleCopyTraceLogBody(currentTrace);
+        } else {
+          handleCurate();
+        }
       }
 
       // E: Export CSV
@@ -568,11 +678,31 @@ export const TracesView: React.FC<TracesViewProps> = ({
         e.preventDefault();
         handleDownloadCSV();
       }
+
+      // X: Export specific trace to JSON
+      if (e.key.toLowerCase() === 'x' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        if (currentTrace) {
+          handleExportTraceJSON(currentTrace);
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [filteredTraces, currentTrace, currentSpan, selectedSpan, searchQuery, safePage, totalPages, isFilterDropdownOpen]);
+
+  const handleExportTraceJSON = (targetTrace?: Trace) => {
+    const traceToExport = targetTrace || currentTrace;
+    if (!traceToExport) return;
+    const success = downloadTraceAsJson(traceToExport);
+    if (success) {
+      setJsonExportSuccessId(traceToExport.id);
+      setTimeout(() => {
+        setJsonExportSuccessId(prev => (prev === traceToExport.id ? null : prev));
+      }, 2200);
+    }
+  };
 
   const handleDownloadCSV = () => {
     if (filteredTraces.length === 0) return;
@@ -702,6 +832,36 @@ export const TracesView: React.FC<TracesViewProps> = ({
                 <span className="text-[10px] text-neutral-500 bg-white/[0.06] px-1.5 py-0.2 rounded ml-1">
                   {filteredTraces.length}
                 </span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => handleExportTraceJSON(currentTrace)}
+            disabled={!currentTrace}
+            title={
+              currentTrace
+                ? `Export selected trace ${currentTrace.id} log to JSON (Press X)`
+                : 'Select a trace to export JSON'
+            }
+            className={`flex items-center space-x-1.5 px-3 py-1.5 text-xs font-mono rounded-lg border transition-all duration-200 ${
+              jsonExportSuccessId === currentTrace?.id
+                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 shadow-sm'
+                : 'bg-[#101116] border-white/[0.1] text-neutral-300 hover:text-white hover:bg-[#181920] hover:border-white/20'
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            {jsonExportSuccessId === currentTrace?.id ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Exported JSON</span>
+              </>
+            ) : (
+              <>
+                <FileJson className="w-3.5 h-3.5 text-neutral-400" />
+                <span>Export to JSON</span>
+                <kbd className="text-[10px] text-neutral-400 bg-white/[0.06] border border-white/[0.08] px-1 py-0.2 rounded ml-0.5">
+                  X
+                </kbd>
               </>
             )}
           </button>
@@ -1265,6 +1425,22 @@ export const TracesView: React.FC<TracesViewProps> = ({
             >
               <Download className="w-4 h-4" />
             </button>
+            <button
+              onClick={() => handleExportTraceJSON(currentTrace)}
+              disabled={!currentTrace}
+              title={currentTrace ? `Export trace ${currentTrace.id} to JSON` : 'Export selected trace to JSON'}
+              className={`p-2 surface-solid rounded-lg border transition-colors ${
+                jsonExportSuccessId === currentTrace?.id
+                  ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                  : 'bg-[#08090b] border-[#191b22] hover:border-white/20 text-neutral-400 hover:text-white'
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
+            >
+              {jsonExportSuccessId === currentTrace?.id ? (
+                <Check className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <FileJson className="w-4 h-4" />
+              )}
+            </button>
           </div>
 
           {/* Trace Stream Auto-Scroll Control Bar */}
@@ -1292,6 +1468,17 @@ export const TracesView: React.FC<TracesViewProps> = ({
             </div>
 
             <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setTimeFormatMode(prev => prev === 'relative' ? 'absolute' : prev === 'absolute' ? 'dual' : 'relative')}
+                title={`Time format mode: ${timeFormatMode}. Click to toggle Relative ('2s ago'), Absolute ('10:32:15'), or Dual view.`}
+                className="text-[10px] text-neutral-400 hover:text-neutral-200 flex items-center space-x-1 px-1.5 py-0.5 rounded bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-colors"
+              >
+                <Clock className="w-2.5 h-2.5 text-neutral-400" />
+                <span className="truncate max-w-[95px]">
+                  {timeFormatMode === 'relative' ? 'Relative (2s ago)' : timeFormatMode === 'absolute' ? 'Clock (10:32)' : 'Dual (2s · 10:32)'}
+                </span>
+              </button>
+
               <button
                 onClick={() => setSortOrder(prev => prev === 'reverse-chronological' ? 'chronological' : 'reverse-chronological')}
                 title={`Sort: ${TRACE_SORT_OPTIONS.find(s => s.id === sortOption)?.label || sortOption}. Click to toggle time ordering.`}
@@ -1330,6 +1517,7 @@ export const TracesView: React.FC<TracesViewProps> = ({
                   paginatedTraces.map((trace) => {
                     const isSelected = currentTrace?.id === trace.id;
                     const hasDiscrepancy = trace.status === 'error' || trace.status === 'warning';
+                    const timeInfo = getTimeDisplayInfo(trace.timestamp, currentTimeMs);
 
                     return (
                       <motion.div
@@ -1388,18 +1576,13 @@ export const TracesView: React.FC<TracesViewProps> = ({
                             />
                             <span>{trace.id}</span>
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(trace.id);
-                                setCopiedTraceId(trace.id);
-                                setTimeout(() => setCopiedTraceId(prev => (prev === trace.id ? null : prev)), 2000);
-                              }}
+                              onClick={(e) => handleCopyTraceId(trace.id, e)}
                               className={`px-1 py-0.2 rounded text-[9px] font-mono flex items-center space-x-0.5 transition-all border shrink-0 ${
                                 copiedTraceId === trace.id
                                   ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
                                   : 'bg-white/[0.06] border-white/[0.12] text-neutral-400 hover:text-white hover:bg-white/[0.14]'
                               }`}
-                              title="Copy Trace ID"
+                              title={`Copy Trace ID ${trace.id} to clipboard`}
                               aria-label={`Copy Trace ID ${trace.id}`}
                             >
                               {copiedTraceId === trace.id ? (
@@ -1410,7 +1593,54 @@ export const TracesView: React.FC<TracesViewProps> = ({
                               ) : (
                                 <>
                                   <Copy className="w-2.5 h-2.5" />
-                                  <span className="text-[8px]">Copy</span>
+                                  <span className="text-[8px]">Copy ID</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={(e) => handleCopyTraceLogBody(trace, e)}
+                              className={`px-1 py-0.2 rounded text-[9px] font-mono flex items-center space-x-0.5 transition-all border shrink-0 ${
+                                copyFeedback?.traceId === trace.id && copyFeedback.type === 'fullLog'
+                                  ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
+                                  : 'bg-white/[0.06] border-white/[0.12] text-neutral-400 hover:text-white hover:bg-white/[0.14]'
+                              }`}
+                              title={`Copy full log body of trace ${trace.id} to clipboard as JSON`}
+                              aria-label={`Copy full log body of trace ${trace.id}`}
+                            >
+                              {copyFeedback?.traceId === trace.id && copyFeedback.type === 'fullLog' ? (
+                                <>
+                                  <Check className="w-2.5 h-2.5 text-emerald-300" />
+                                  <span className="text-[8px] text-emerald-300">Log</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ClipboardCopy className="w-2.5 h-2.5" />
+                                  <span className="text-[8px]">Log</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExportTraceJSON(trace);
+                              }}
+                              className={`px-1 py-0.2 rounded text-[9px] font-mono flex items-center space-x-0.5 transition-all border shrink-0 ${
+                                jsonExportSuccessId === trace.id
+                                  ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
+                                  : 'bg-white/[0.06] border-white/[0.12] text-neutral-400 hover:text-white hover:bg-white/[0.14]'
+                              }`}
+                              title={`Export trace ${trace.id} log to JSON`}
+                              aria-label={`Export trace ${trace.id} to JSON`}
+                            >
+                              {jsonExportSuccessId === trace.id ? (
+                                <>
+                                  <Check className="w-2.5 h-2.5 text-emerald-300" />
+                                  <span className="text-[8px] text-emerald-300">JSON</span>
+                                </>
+                              ) : (
+                                <>
+                                  <FileJson className="w-2.5 h-2.5" />
+                                  <span className="text-[8px]">JSON</span>
                                 </>
                               )}
                             </button>
@@ -1433,7 +1663,45 @@ export const TracesView: React.FC<TracesViewProps> = ({
                                 <span>Active</span>
                               </span>
                             )}
-                            <span className="text-neutral-500">{trace.timestamp.split(' ')[1]}</span>
+                            {/* Formatted Timestamp & Relative Time Column with Tooltip */}
+                            <div className="group/time relative inline-flex items-center">
+                              <span
+                                className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono text-neutral-400 bg-white/[0.04] border border-white/[0.08] hover:border-white/25 hover:text-white transition-all cursor-help"
+                                title={`Full Relative: ${timeInfo.fullRelative}\nExact Timestamp: ${timeInfo.formattedDateTime}\nISO: ${timeInfo.isoString}`}
+                              >
+                                <Clock className="w-2.5 h-2.5 text-neutral-500 group-hover/time:text-emerald-400 transition-colors" />
+                                <span className={timeFormatMode === 'relative' ? 'font-medium text-neutral-300 group-hover/time:text-white' : ''}>
+                                  {timeFormatMode === 'relative'
+                                    ? timeInfo.relative
+                                    : timeFormatMode === 'absolute'
+                                    ? timeInfo.formattedTime
+                                    : `${timeInfo.relative} · ${timeInfo.formattedTime}`}
+                                </span>
+                              </span>
+
+                              {/* Interactive Tooltip showing Full Relative Time & Exact Timestamp */}
+                              <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover/time:flex flex-col z-50 pointer-events-none w-56 p-2 rounded-lg bg-[#0c0d12]/95 border border-white/20 shadow-2xl backdrop-blur-xl text-[10px] font-mono space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                                <div className="flex items-center justify-between pb-1 border-b border-white/[0.08]">
+                                  <span className="text-neutral-400 uppercase text-[9px] font-semibold">Execution Time</span>
+                                  <span className="text-emerald-400 font-bold">{timeInfo.fullRelative}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-neutral-300">
+                                  <span className="text-neutral-500">Relative Time:</span>
+                                  <span className="text-white font-medium">{timeInfo.relative}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-neutral-300">
+                                  <span className="text-neutral-500">Exact Timestamp:</span>
+                                  <span className="text-white">{timeInfo.formattedTime}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-neutral-300">
+                                  <span className="text-neutral-500">Calendar Date:</span>
+                                  <span className="text-white">{timeInfo.formattedDate}</span>
+                                </div>
+                                <div className="text-[9px] text-neutral-500 pt-0.5 border-t border-white/[0.06] truncate">
+                                  {timeInfo.isoString || timeInfo.raw}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
@@ -1562,31 +1830,61 @@ export const TracesView: React.FC<TracesViewProps> = ({
               <div className="absolute inset-x-0 top-0 h-[1.5px] apple-liquid-specular pointer-events-none" />
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-white/[0.08] gap-3">
                 <div>
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 flex items-center space-x-2">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 flex flex-wrap items-center gap-2">
                     <span>SELECTED TRACE · {currentTrace.sessionId}</span>
+                    <span className="text-neutral-600">·</span>
+                    <div className="group/sel-time relative inline-flex items-center">
+                      <span
+                        className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-medium cursor-help"
+                        title={`Full Relative: ${selectedTraceTime?.fullRelative}\nExact Timestamp: ${selectedTraceTime?.formattedDateTime}`}
+                      >
+                        <Clock className="w-3 h-3 text-emerald-400" />
+                        <span>{selectedTraceTime?.relative}</span>
+                        <span className="text-neutral-400 font-normal">({selectedTraceTime?.formattedTime})</span>
+                      </span>
+
+                      {/* Tooltip */}
+                      <div className="absolute left-0 bottom-full mb-1.5 hidden group-hover/sel-time:flex flex-col z-50 pointer-events-none w-60 p-2.5 rounded-xl bg-[#0c0d12]/95 border border-white/20 shadow-2xl backdrop-blur-xl text-[10px] font-mono space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-center justify-between pb-1 border-b border-white/[0.08]">
+                          <span className="text-neutral-400 uppercase text-[9px] font-semibold">Execution Timestamp</span>
+                          <span className="text-emerald-400 font-bold">{selectedTraceTime?.fullRelative}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-neutral-300">
+                          <span className="text-neutral-500">Relative Time:</span>
+                          <span className="text-white font-medium">{selectedTraceTime?.relative}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-neutral-300">
+                          <span className="text-neutral-500">Formatted Time:</span>
+                          <span className="text-white">{selectedTraceTime?.formattedTime}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-neutral-300">
+                          <span className="text-neutral-500">Calendar Date:</span>
+                          <span className="text-white">{selectedTraceTime?.formattedDate}</span>
+                        </div>
+                        <div className="text-[9px] text-neutral-500 pt-0.5 border-t border-white/[0.06] truncate">
+                          {selectedTraceTime?.isoString || selectedTraceTime?.raw}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2 mt-0.5">
                     <h3 className="text-sm font-semibold text-white font-mono">
                       {currentTrace.id} &nbsp;·&nbsp; {currentTrace.agentName}
                     </h3>
                     <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(currentTrace.id);
-                        setCopiedTraceId(currentTrace.id);
-                        setTimeout(() => setCopiedTraceId(prev => (prev === currentTrace.id ? null : prev)), 2000);
-                      }}
+                      onClick={(e) => handleCopyTraceId(currentTrace.id, e)}
                       className={`px-2 py-0.5 rounded text-[10px] font-mono flex items-center space-x-1 transition-all border shrink-0 ${
                         copiedTraceId === currentTrace.id
                           ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
                           : 'bg-white/[0.06] border-white/[0.12] text-neutral-300 hover:text-white hover:bg-white/[0.14]'
                       }`}
-                      title="Copy Trace ID"
+                      title="Copy Trace ID to clipboard (Shortcut: Y)"
                       aria-label={`Copy Trace ID ${currentTrace.id}`}
                     >
                       {copiedTraceId === currentTrace.id ? (
                         <>
                           <Check className="w-2.5 h-2.5 text-emerald-300" />
-                          <span className="text-[9px] text-emerald-300">Copied</span>
+                          <span className="text-[9px] text-emerald-300">Copied ID</span>
                         </>
                       ) : (
                         <>
@@ -1595,31 +1893,161 @@ export const TracesView: React.FC<TracesViewProps> = ({
                         </>
                       )}
                     </button>
+                    <button
+                      onClick={(e) => handleCopyTraceLogBody(currentTrace, e)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono flex items-center space-x-1 transition-all border shrink-0 ${
+                        copyFeedback?.traceId === currentTrace.id && copyFeedback.type === 'fullLog'
+                          ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
+                          : 'bg-white/[0.06] border-white/[0.12] text-neutral-300 hover:text-white hover:bg-white/[0.14]'
+                      }`}
+                      title="Copy full trace log body as JSON to clipboard (Shortcut: Shift+Y)"
+                      aria-label={`Copy full trace log body of ${currentTrace.id}`}
+                    >
+                      {copyFeedback?.traceId === currentTrace.id && copyFeedback.type === 'fullLog' ? (
+                        <>
+                          <Check className="w-2.5 h-2.5 text-emerald-300" />
+                          <span className="text-[9px] text-emerald-300">Copied Log</span>
+                        </>
+                      ) : (
+                        <>
+                          <ClipboardCopy className="w-2.5 h-2.5" />
+                          <span className="text-[9px]">Copy Log</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
 
-                {/* 1-Click Curate into Dataset (Langfuse Loop) */}
-                <button
-                  onClick={handleCurate}
-                  className="px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-neutral-200 text-xs font-mono flex items-center space-x-1.5 transition-colors border border-white/[0.12] hover:border-white/20 shrink-0"
-                  title="Add this execution to regression dataset for offline evaluation"
-                >
-                  {curatedSuccess ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-white" />
-                      <span className="text-white font-medium">Curated to Dataset!</span>
-                    </>
-                  ) : (
-                    <>
-                      <PlusCircle className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>Curate to Dataset</span>
-                    </>
-                  )}
-                </button>
+                {/* Trace Actions: Copy to Clipboard, Export to JSON & Curate to Dataset */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {/* Dedicated Copy to Clipboard Dropdown Action */}
+                  <div className="relative inline-flex" ref={copyMenuRef}>
+                    <button
+                      ref={copyButtonRef}
+                      onClick={() => setIsCopyMenuOpen(prev => !prev)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono flex items-center space-x-1.5 transition-all border shrink-0 ${
+                        copyFeedback?.traceId === currentTrace.id
+                          ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 shadow-sm'
+                          : 'bg-white/[0.06] hover:bg-white/[0.1] text-neutral-200 border-white/[0.12] hover:border-white/20'
+                      }`}
+                      title="Copy Trace ID or Full Log Body to clipboard (Shortcut: Y / Shift+Y)"
+                      aria-label="Copy to Clipboard"
+                      aria-haspopup="true"
+                      aria-expanded={isCopyMenuOpen}
+                    >
+                      {copyFeedback?.traceId === currentTrace.id ? (
+                        <>
+                          <ClipboardCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-300 font-medium">
+                            {copyFeedback.type === 'id' ? 'Trace ID Copied!' : 'Log Body Copied!'}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <ClipboardCopy className="w-3.5 h-3.5 text-neutral-400 group-hover:text-white" />
+                          <span>Copy to Clipboard</span>
+                          <ChevronDown className={`w-3 h-3 text-neutral-400 transition-transform duration-200 ${isCopyMenuOpen ? 'rotate-180' : ''}`} />
+                        </>
+                      )}
+                    </button>
+
+                    {isCopyMenuOpen && (
+                      <div className="absolute right-0 top-full mt-1.5 w-64 glass-morphism-v2 rounded-xl border border-white/[0.15] bg-[#0c0d12]/95 backdrop-blur-2xl shadow-2xl p-1.5 z-50 text-xs font-mono space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="px-2.5 py-1 text-[10px] uppercase tracking-wider text-neutral-400 font-semibold border-b border-white/[0.08] flex items-center justify-between">
+                          <span>Copy to Clipboard</span>
+                          <span className="text-neutral-500 text-[9px]">ESC to close</span>
+                        </div>
+
+                        <button
+                          onClick={(e) => handleCopyTraceId(currentTrace.id, e)}
+                          className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-neutral-200 hover:text-white flex items-start space-x-2.5 transition-colors group"
+                        >
+                          <Copy className="w-4 h-4 text-neutral-400 group-hover:text-emerald-300 shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-white">Copy Trace ID</span>
+                              <kbd className="text-[10px] px-1 py-0.2 rounded bg-black/60 border border-white/20 text-neutral-300">Y</kbd>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 truncate mt-0.5">
+                              {currentTrace.id}
+                            </p>
+                          </div>
+                        </button>
+
+                        <button
+                          onClick={(e) => handleCopyTraceLogBody(currentTrace, e)}
+                          className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-neutral-200 hover:text-white flex items-start space-x-2.5 transition-colors group"
+                        >
+                          <FileText className="w-4 h-4 text-neutral-400 group-hover:text-emerald-300 shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-white">Copy Full Log Body</span>
+                              <kbd className="text-[10px] px-1 py-0.2 rounded bg-black/60 border border-white/20 text-neutral-300">Shift+Y</kbd>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 mt-0.5">
+                              Structured JSON with {currentTrace.spans.length} spans & diagnostics
+                            </p>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleExportTraceJSON(currentTrace)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono flex items-center space-x-1.5 transition-all border shrink-0 ${
+                      jsonExportSuccessId === currentTrace.id
+                        ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 shadow-sm'
+                        : 'bg-white/[0.06] hover:bg-white/[0.1] text-neutral-200 border-white/[0.12] hover:border-white/20'
+                    }`}
+                    title={`Export trace ${currentTrace.id} log and full spans hierarchy to JSON for offline analysis`}
+                  >
+                    {jsonExportSuccessId === currentTrace.id ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-300 font-medium">Exported JSON!</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileJson className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>Export to JSON</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleCurate}
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-neutral-200 text-xs font-mono flex items-center space-x-1.5 transition-colors border border-white/[0.12] hover:border-white/20 shrink-0"
+                    title="Add this execution to regression dataset for offline evaluation"
+                  >
+                    {curatedSuccess ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-white" />
+                        <span className="text-white font-medium">Curated to Dataset!</span>
+                      </>
+                    ) : (
+                      <>
+                        <PlusCircle className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>Curate to Dataset</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Trace Stats Row */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 font-mono text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4 font-mono text-xs">
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">TIME RECORDED</span>
+                  <span
+                    className="text-emerald-400 font-semibold mt-0.5 block flex items-center space-x-1 cursor-help"
+                    title={`Full Relative: ${selectedTraceTime?.fullRelative}\nExact Timestamp: ${selectedTraceTime?.formattedDateTime}`}
+                  >
+                    <span>{selectedTraceTime?.relative}</span>
+                  </span>
+                  <span className="text-neutral-400 text-[10px] block truncate">
+                    {selectedTraceTime?.formattedTime}
+                  </span>
+                </div>
                 <div>
                   <span className="text-neutral-500 block text-[10px]">TOTAL DURATION</span>
                   <span className="text-white font-semibold mt-0.5 block">{currentTrace.durationMs} ms</span>
@@ -1989,9 +2417,26 @@ export const TracesView: React.FC<TracesViewProps> = ({
                       {currentSpan.name}
                     </span>
                   </div>
-                  <span className="text-xs font-mono text-neutral-400">
-                    ID: {currentSpan.id}
-                  </span>
+                  <div className="flex items-center space-x-2 text-xs font-mono text-neutral-400">
+                    <span>ID: {currentSpan.id}</span>
+                    <button
+                      onClick={(e) => handleCopySpanText(currentSpan.id, 'span-id', e)}
+                      className="px-1.5 py-0.5 rounded text-[10px] font-mono flex items-center space-x-1 transition-all border shrink-0 bg-white/[0.04] hover:bg-white/[0.09] text-neutral-300 hover:text-white border-white/[0.08]"
+                      title="Copy Span ID to clipboard"
+                    >
+                      {copiedSpanPayload === 'span-id' ? (
+                        <>
+                          <Check className="w-2.5 h-2.5 text-emerald-300" />
+                          <span className="text-[8px] text-emerald-300">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-2.5 h-2.5" />
+                          <span className="text-[8px]">Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Solid Scrolling Body */}
@@ -1999,9 +2444,28 @@ export const TracesView: React.FC<TracesViewProps> = ({
                   {/* Prompt & Completion */}
                   {currentSpan.prompt && (
                     <div className="space-y-2">
-                      <span className="text-neutral-400 uppercase tracking-wider text-[11px] block">
-                        Prompt Payload
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-400 uppercase tracking-wider text-[11px] block">
+                          Prompt Payload
+                        </span>
+                        <button
+                          onClick={(e) => handleCopySpanText(currentSpan.prompt!, 'prompt', e)}
+                          className="px-2 py-0.5 rounded text-[10px] font-mono flex items-center space-x-1 transition-all border shrink-0 bg-white/[0.04] hover:bg-white/[0.09] text-neutral-300 hover:text-white border-white/[0.08]"
+                          title="Copy prompt payload to clipboard"
+                        >
+                          {copiedSpanPayload === 'prompt' ? (
+                            <>
+                              <Check className="w-2.5 h-2.5 text-emerald-300" />
+                              <span className="text-[9px] text-emerald-300">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-2.5 h-2.5" />
+                              <span className="text-[9px]">Copy Payload</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                       <div className="p-3 bg-black rounded-lg border border-white/[0.06] text-neutral-300 whitespace-pre-wrap leading-relaxed">
                         {currentSpan.prompt}
                       </div>
@@ -2010,9 +2474,28 @@ export const TracesView: React.FC<TracesViewProps> = ({
 
                   {currentSpan.completion && (
                     <div className="space-y-2">
-                      <span className="text-neutral-400 uppercase tracking-wider text-[11px] block">
-                        Model Completion / Reasoning
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-400 uppercase tracking-wider text-[11px] block">
+                          Model Completion / Reasoning
+                        </span>
+                        <button
+                          onClick={(e) => handleCopySpanText(currentSpan.completion!, 'completion', e)}
+                          className="px-2 py-0.5 rounded text-[10px] font-mono flex items-center space-x-1 transition-all border shrink-0 bg-white/[0.04] hover:bg-white/[0.09] text-neutral-300 hover:text-white border-white/[0.08]"
+                          title="Copy model completion to clipboard"
+                        >
+                          {copiedSpanPayload === 'completion' ? (
+                            <>
+                              <Check className="w-2.5 h-2.5 text-emerald-300" />
+                              <span className="text-[9px] text-emerald-300">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-2.5 h-2.5" />
+                              <span className="text-[9px]">Copy Completion</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                       <div className="p-3 bg-black rounded-lg border border-white/[0.06] text-neutral-200 whitespace-pre-wrap leading-relaxed">
                         {currentSpan.completion}
                       </div>
@@ -2022,20 +2505,59 @@ export const TracesView: React.FC<TracesViewProps> = ({
                   {/* Tool Invocations */}
                   {currentSpan.toolArgs && (
                     <div className="space-y-2">
-                      <span className="text-neutral-400 uppercase tracking-wider text-[11px] block">
-                        Tool Invocations ({currentSpan.toolName})
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-400 uppercase tracking-wider text-[11px] block">
+                          Tool Invocations ({currentSpan.toolName})
+                        </span>
+                        <button
+                          onClick={(e) => handleCopySpanText(JSON.stringify(currentSpan.toolArgs, null, 2), 'toolArgs', e)}
+                          className="px-2 py-0.5 rounded text-[10px] font-mono flex items-center space-x-1 transition-all border shrink-0 bg-white/[0.04] hover:bg-white/[0.09] text-neutral-300 hover:text-white border-white/[0.08]"
+                          title="Copy tool arguments to clipboard"
+                        >
+                          {copiedSpanPayload === 'toolArgs' ? (
+                            <>
+                              <Check className="w-2.5 h-2.5 text-emerald-300" />
+                              <span className="text-[9px] text-emerald-300">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-2.5 h-2.5" />
+                              <span className="text-[9px]">Copy Args</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                       <div className="p-3 bg-black rounded-lg border border-white/[0.06] text-neutral-300 overflow-x-auto">
                         <pre>{JSON.stringify(currentSpan.toolArgs, null, 2)}</pre>
                       </div>
                     </div>
                   )}
 
+                  {/* Tool Output */}
                   {currentSpan.toolOutput && (
                     <div className="space-y-2">
-                      <span className="text-neutral-400 uppercase tracking-wider text-[11px] block">
-                        Tool Output Result
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-400 uppercase tracking-wider text-[11px] block">
+                          Tool Output Result
+                        </span>
+                        <button
+                          onClick={(e) => handleCopySpanText(JSON.stringify(currentSpan.toolOutput, null, 2), 'toolOutput', e)}
+                          className="px-2 py-0.5 rounded text-[10px] font-mono flex items-center space-x-1 transition-all border shrink-0 bg-white/[0.04] hover:bg-white/[0.09] text-neutral-300 hover:text-white border-white/[0.08]"
+                          title="Copy tool output result to clipboard"
+                        >
+                          {copiedSpanPayload === 'toolOutput' ? (
+                            <>
+                              <Check className="w-2.5 h-2.5 text-emerald-300" />
+                              <span className="text-[9px] text-emerald-300">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-2.5 h-2.5" />
+                              <span className="text-[9px]">Copy Output</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                       <div className="p-3 bg-black rounded-lg border border-white/[0.06] text-neutral-200 overflow-x-auto">
                         <pre>{JSON.stringify(currentSpan.toolOutput, null, 2)}</pre>
                       </div>
