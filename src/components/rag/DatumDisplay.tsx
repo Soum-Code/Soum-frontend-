@@ -5,7 +5,7 @@ import { riskTone, riskBadgeClasses, riskLabel } from '../../lib/riskTone';
 
 interface DatumDisplayProps {
   datum: Datum<any>;
-  format?: 'risk' | 'latency' | 'percentage' | 'text' | 'stage';
+  format?: 'risk' | 'latency' | 'percentage' | 'asi' | 'text' | 'stage';
   emptyLabel?: string;
   className?: string;
 }
@@ -112,8 +112,27 @@ export const DatumDisplay: React.FC<DatumDisplayProps> = ({
     );
   }
 
+  // Agent Stability Index. The backend scores it 0-100, so it is not a fraction.
+  if (format === 'asi') {
+    return (
+      <span className={`font-mono tabular-nums text-neutral-200 ${className}`}>
+        {typeof val === 'number' ? `${val.toFixed(1)} / 100` : '—'}
+      </span>
+    );
+  }
+
   if (format === 'stage') {
-    const isStage2 = String(val).toLowerCase() === 'stage2';
+    const stage = String(val).toLowerCase();
+    const isStage2 = stage === 'stage2';
+    // "skipped" is its own outcome: the evaluator had nothing to check, so it
+    // must not read as the embedding stage having run.
+    const label = isStage2
+      ? 'Stage 2 (NLI)'
+      : stage === 'stage1'
+      ? 'Stage 1 (Embedding)'
+      : stage === 'skipped'
+      ? 'Skipped'
+      : String(val);
     return (
       <span
         className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
@@ -122,7 +141,7 @@ export const DatumDisplay: React.FC<DatumDisplayProps> = ({
             : 'bg-neutral-900 text-neutral-400 border-white/10'
         } ${className}`}
       >
-        {isStage2 ? 'Stage 2 (NLI)' : 'Stage 1 (Embedding)'}
+        {label}
       </span>
     );
   }

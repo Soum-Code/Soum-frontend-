@@ -1,0 +1,16 @@
+{
+  "method": "GET",
+  "path": "/health",
+  "status": 200,
+  "body": {
+    "provider": "nvidia",
+    "base_url": "",
+    "models": {
+      "retriever": "fixture-retriever",
+      "verifier": "fixture-verifier",
+      "answerer": "fixture-answerer"
+    },
+    "key_configured": true,
+    "key_env": "NVIDIA_API_KEY"
+  }
+}

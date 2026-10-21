@@ -1,0 +1,36 @@
+{
+  "method": "POST",
+  "path": "/chat",
+  "status": 200,
+  "body": {
+    "session_id": "sess_fixture",
+    "trace_id": "c6d4d5ba895b4fe5b8341759420451d1",
+    "reply": "Drift is the shift in an agent's behaviour away from its baseline, measured on pooled windows of its outputs.",
+    "verifier_verdict": "The evidence answers the question. The retrieved documents describe drift directly.",
+    "retrieved": [
+      "SQLite Write-Ahead Logging (WAL) Architecture",
+      "Attention Is All You Need",
+      "Telemetry Performance Baseline KPI Definitions"
+    ],
+    "agents": [
+      {
+        "agent": "retriever",
+        "model": "fixture-retriever",
+        "output": "I retrieved three documents about agent drift and how it is measured.",
+        "latency_ms": 0
+      },
+      {
+        "agent": "verifier",
+        "model": "fixture-verifier",
+        "output": "The evidence answers the question. The retrieved documents describe drift directly.",
+        "latency_ms": 0
+      },
+      {
+        "agent": "answerer",
+        "model": "fixture-answerer",
+        "output": "Drift is the shift in an agent's behaviour away from its baseline, measured on pooled windows of its outputs.",
+        "latency_ms": 0
+      }
+    ]
+  }
+}

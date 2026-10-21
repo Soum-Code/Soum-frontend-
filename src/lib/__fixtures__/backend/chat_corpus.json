@@ -1,0 +1,15 @@
+{
+  "method": "GET",
+  "path": "/corpus",
+  "status": 200,
+  "body": {
+    "documents": [
+      "Attention Is All You Need",
+      "DeBERTa: Decoding-enhanced BERT with Disentangled Attention",
+      "SQLite Write-Ahead Logging (WAL) Architecture",
+      "KB-401: Resolving Invalid API Key and Token Expiration Errors",
+      "KB-429: Rate Limiter Token-Bucket Backoff Strategy",
+      "Telemetry Performance Baseline KPI Definitions"
+    ]
+  }
+}

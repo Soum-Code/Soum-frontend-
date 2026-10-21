@@ -1,33 +1,89 @@
 /**
  * Real API client for AgentPulse Chat Service (port 8100) and AgentPulse API (port 8000).
- * 
+ *
  * Rules:
  * - NO mock data fallbacks
  * - NO hardcoded corpus list
  * - NO fabricated scores or synthetic answers
  * - Real errors, 502s, and 503s are surfaced directly
+ *
+ * Where the services live, and how requests authenticate:
+ * - Each base URL can be set at runtime (window.__AGENTPULSE_API_URL__,
+ *   window.__AGENTPULSE_CHAT_URL__) or at build time (VITE_AGENTPULSE_API_URL,
+ *   VITE_CHAT_SERVER_URL). An explicitly empty value means "this origin", which
+ *   is what a deployment behind the dashboard's nginx proxy wants; only an unset
+ *   value falls back to localhost.
+ * - Outside local development the API wants an X-API-Key on every route except
+ *   the liveness/readiness probes. Behind the nginx proxy the proxy attaches it.
+ *   Talking to the API directly, set window.__AGENTPULSE_API_KEY__ at runtime.
+ *   It is deliberately not a VITE_* variable, which Vite would inline into the
+ *   shipped JavaScript for every visitor. The key is only ever sent to the
+ *   AgentPulse API, never to the chat service.
+ *
+ * The response shapes are the backend's, pinned by contract.test.ts against
+ * recordings of the real services.
  */
 
 import {
-  CorpusResponse,
-  ChatServerHealth,
+  AgentDriftInfo,
+  AlertsResponse,
+  ApiAlert,
   ChatResponse200,
   ChatResponse502,
-  TraceDetailResponse,
+  ChatServerHealth,
+  CorpusResponse,
+  DriftResponse,
+  EvaluatorHealth,
   PlatformHealth,
-  AgentDriftInfo,
+  TraceDetailResponse,
   WsLiveSpanEvent
 } from './ragTypes';
 
-export const CHAT_SERVER_URL =
-  (typeof window !== 'undefined' && (window as any).__AGENTPULSE_CHAT_URL__) ||
-  (import.meta as any).env?.VITE_CHAT_SERVER_URL ||
-  'http://localhost:8100';
+interface RuntimeGlobals {
+  __AGENTPULSE_CHAT_URL__?: string;
+  __AGENTPULSE_API_URL__?: string;
+  __AGENTPULSE_API_KEY__?: string;
+}
 
-export const AGENTPULSE_API_URL =
-  (typeof window !== 'undefined' && (window as any).__AGENTPULSE_API_URL__) ||
-  (import.meta as any).env?.VITE_AGENTPULSE_API_URL ||
-  'http://localhost:8000';
+const runtime = (): RuntimeGlobals =>
+  typeof window !== 'undefined' ? (window as unknown as RuntimeGlobals) : {};
+
+/**
+ * The first candidate that is a string wins, including the empty string (same
+ * origin). Trailing slashes are dropped so paths join cleanly.
+ */
+export function resolveBaseUrl(candidates: Array<string | null | undefined>, fallback: string): string {
+  const chosen = candidates.find((c): c is string => typeof c === 'string');
+  return (chosen ?? fallback).replace(/\/+$/, '');
+}
+
+export const CHAT_SERVER_URL = resolveBaseUrl(
+  [runtime().__AGENTPULSE_CHAT_URL__, (import.meta as any).env?.VITE_CHAT_SERVER_URL],
+  'http://localhost:8100'
+);
+
+export const AGENTPULSE_API_URL = resolveBaseUrl(
+  [runtime().__AGENTPULSE_API_URL__, (import.meta as any).env?.VITE_AGENTPULSE_API_URL],
+  'http://localhost:8000'
+);
+
+const where = (base: string) => base || 'this origin';
+
+const apiUrl = (path: string) => `${AGENTPULSE_API_URL}${path}`;
+
+/** Request headers for the AgentPulse API: the caller's, plus the key when one is configured. */
+export function agentpulseHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const key = runtime().__AGENTPULSE_API_KEY__?.trim();
+  return key ? { ...extra, 'X-API-Key': key } : { ...extra };
+}
+
+/** A 401 means the key, not an outage; say so. */
+function httpError(res: Response, what: string): string {
+  if (res.status === 401) {
+    return `HTTP 401: AgentPulse rejected the request; the API key is missing or wrong (${what})`;
+  }
+  return `HTTP ${res.status}: ${what}`;
+}
 
 /**
  * Fetch document titles the retriever can search from GET /corpus
@@ -49,7 +105,7 @@ export async function fetchCorpus(signal?: AbortSignal): Promise<{
     return {
       documents: [],
       unreachable: true,
-      error: `Chat service unreachable at ${CHAT_SERVER_URL}. Start it with: uvicorn demo.chat_server:app --port 8100`
+      error: `Chat service unreachable at ${where(CHAT_SERVER_URL)}. Start it with: uvicorn demo.chat_server:app --port 8100`
     };
   }
 }
@@ -73,7 +129,7 @@ export async function fetchChatServerHealth(signal?: AbortSignal): Promise<{
     if (err.name === 'AbortError') throw err;
     return {
       unreachable: true,
-      error: `Chat service unreachable at ${CHAT_SERVER_URL}`
+      error: `Chat service unreachable at ${where(CHAT_SERVER_URL)}`
     };
   }
 }
@@ -134,7 +190,7 @@ export async function sendChatMessage(
     return {
       status: 0,
       unreachable: true,
-      error: `Chat service unreachable at ${CHAT_SERVER_URL}. Start it with: uvicorn demo.chat_server:app --port 8100`
+      error: `Chat service unreachable at ${where(CHAT_SERVER_URL)}. Start it with: uvicorn demo.chat_server:app --port 8100`
     };
   }
 }
@@ -151,9 +207,12 @@ export async function fetchTraceDetail(
   error?: string;
 }> {
   try {
-    const res = await fetch(`${AGENTPULSE_API_URL}/v1/traces/${encodeURIComponent(traceId)}`, { signal });
+    const res = await fetch(apiUrl(`/v1/traces/${encodeURIComponent(traceId)}`), {
+      signal,
+      headers: agentpulseHeaders()
+    });
     if (!res.ok) {
-      return { error: `HTTP ${res.status}: Failed to load trace ${traceId}` };
+      return { error: httpError(res, `Failed to load trace ${traceId}`) };
     }
     const data: TraceDetailResponse = await res.json();
     return { data };
@@ -161,55 +220,57 @@ export async function fetchTraceDetail(
     if (err.name === 'AbortError') throw err;
     return {
       unreachable: true,
-      error: `AgentPulse API unreachable at ${AGENTPULSE_API_URL}. Start it with: uvicorn app.main:app --app-dir backend`
+      error: `AgentPulse API unreachable at ${where(AGENTPULSE_API_URL)}. Start it with: uvicorn app.main:app --app-dir backend`
     };
   }
 }
 
 /**
- * Fetch Platform and Evaluator Health
+ * Fetch Platform and Evaluator Health from /v1/health/ready and /v1/health/evaluator.
+ *
+ * The evaluator endpoint answers 503 when no worker is alive, with the same body
+ * as a 200 and the reason in `reasons`, so a 503 is read, not treated as a failure
+ * to reach it. It does not report queue depth, so `queueDepth` stays null.
  */
 export async function fetchPlatformHealth(signal?: AbortSignal): Promise<PlatformHealth> {
   const result: PlatformHealth = {
     apiReady: false,
     evaluatorHealthy: false,
     workersAlive: 0,
-    queueDepth: 0,
+    queueDepth: null,
   };
 
   try {
     // 1. Ready probe
-    const readyRes = await fetch(`${AGENTPULSE_API_URL}/v1/health/ready`, { signal });
-    if (readyRes.ok) {
-      result.apiReady = true;
-    }
+    const readyRes = await fetch(apiUrl('/v1/health/ready'), { signal, headers: agentpulseHeaders() });
+    result.apiReady = readyRes.ok;
   } catch {
     result.apiReady = false;
   }
 
   try {
     // 2. Evaluator probe
-    const evalRes = await fetch(`${AGENTPULSE_API_URL}/v1/health/evaluator`, { signal });
-    if (evalRes.ok) {
-      const evalData = await evalRes.json();
-      result.evaluatorHealthy = evalData.status === 'healthy' || evalData.workers_alive > 0;
+    const evalRes = await fetch(apiUrl('/v1/health/evaluator'), { signal, headers: agentpulseHeaders() });
+    if (evalRes.ok || evalRes.status === 503) {
+      const evalData: EvaluatorHealth = await evalRes.json();
+      result.evaluatorHealthy = evalData.ready === true;
       result.workersAlive = evalData.workers_alive ?? 0;
-      result.queueDepth = evalData.queue_depth ?? 0;
-      result.lastEvalTime = evalData.last_eval_time;
+      if (!result.evaluatorHealthy && evalData.reasons?.length) {
+        result.errorMessage = evalData.reasons.join('; ');
+      }
     } else {
-      result.evaluatorHealthy = false;
-      result.errorMessage = `Evaluator health returned HTTP ${evalRes.status}`;
+      result.errorMessage = httpError(evalRes, 'Evaluator health check failed');
     }
-  } catch (err: any) {
+  } catch {
     result.evaluatorHealthy = false;
-    result.errorMessage = `Evaluator worker unreachable. Start with: python -m app.worker`;
+    result.errorMessage = `AgentPulse API unreachable at ${where(AGENTPULSE_API_URL)}`;
   }
 
   return result;
 }
 
 /**
- * Fetch Drift and Baseline statistics from /v1/drift and /v1/agents
+ * Fetch drift statistics from GET /v1/drift, which answers {agents: [...]}.
  */
 export async function fetchAgentDrift(signal?: AbortSignal): Promise<{
   drift: AgentDriftInfo[];
@@ -217,36 +278,70 @@ export async function fetchAgentDrift(signal?: AbortSignal): Promise<{
   error?: string;
 }> {
   try {
-    const res = await fetch(`${AGENTPULSE_API_URL}/v1/drift`, { signal });
+    const res = await fetch(apiUrl('/v1/drift'), { signal, headers: agentpulseHeaders() });
     if (!res.ok) {
-      return { drift: [], error: `HTTP ${res.status}: Failed to load drift statistics` };
+      return { drift: [], error: httpError(res, 'Failed to load drift statistics') };
     }
-    const data = await res.json();
-    return { drift: Array.isArray(data) ? data : data.drift || [] };
+    const data: DriftResponse = await res.json();
+    return { drift: data.agents || [] };
   } catch (err: any) {
     if (err.name === 'AbortError') throw err;
     return {
       drift: [],
       unreachable: true,
-      error: `AgentPulse API unreachable at ${AGENTPULSE_API_URL}`
+      error: `AgentPulse API unreachable at ${where(AGENTPULSE_API_URL)}`
     };
   }
 }
 
 /**
- * Acknowledge an Alert / Incident via PATCH /v1/alerts/{id}
+ * Fetch recent alerts from GET /v1/alerts (newest first).
  */
-export async function acknowledgeAlert(alertId: string): Promise<boolean> {
+export async function fetchAlerts(signal?: AbortSignal): Promise<{
+  alerts: ApiAlert[];
+  unreachable?: boolean;
+  error?: string;
+}> {
   try {
-    const res = await fetch(`${AGENTPULSE_API_URL}/v1/alerts/${encodeURIComponent(alertId)}`, {
+    const res = await fetch(apiUrl('/v1/alerts?limit=50'), { signal, headers: agentpulseHeaders() });
+    if (!res.ok) {
+      return { alerts: [], error: httpError(res, 'Failed to load alerts') };
+    }
+    const data: AlertsResponse = await res.json();
+    return { alerts: data.alerts || [] };
+  } catch (err: any) {
+    if (err.name === 'AbortError') throw err;
+    return {
+      alerts: [],
+      unreachable: true,
+      error: `AgentPulse API unreachable at ${where(AGENTPULSE_API_URL)}`
+    };
+  }
+}
+
+/**
+ * Acknowledge an alert via PATCH /v1/alerts/{id}.
+ *
+ * The backend reads `acknowledged`. It ignores unknown fields, so the earlier
+ * body {status: 'acknowledged'} came back 200 and changed nothing. PATCH always
+ * needs a key, even in local development.
+ */
+export async function acknowledgeAlert(alertId: number): Promise<boolean> {
+  try {
+    const res = await fetch(apiUrl(`/v1/alerts/${alertId}`), {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'acknowledged' })
+      headers: agentpulseHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ acknowledged: true })
     });
     return res.ok;
   } catch {
     return false;
   }
+}
+
+/** ws:// or wss:// URL for the live span feed; an empty base means the page's own origin. */
+export function websocketUrl(base: string, origin?: string): string {
+  return `${(base || origin || '').replace(/^http/, 'ws')}/v1/ws/live`;
 }
 
 /**
@@ -257,8 +352,8 @@ export function createLiveSpanSocket(
   onError?: () => void
 ): { close: () => void } {
   try {
-    const wsUrl = AGENTPULSE_API_URL.replace(/^http/, 'ws') + '/v1/ws/live';
-    const ws = new WebSocket(wsUrl);
+    const origin = typeof window !== 'undefined' ? window.location?.origin : undefined;
+    const ws = new WebSocket(websocketUrl(AGENTPULSE_API_URL, origin));
 
     ws.onmessage = (event) => {
       try {
@@ -318,7 +413,7 @@ export function pollTraceEvaluation(
       const hasEvaluations =
         spans.length > 0 &&
         spans.some(s => s.evaluation !== null && s.evaluation !== undefined);
-      
+
       const isAllEvaluated =
         spans.length > 0 &&
         spans.every(s => s.evaluation !== null && s.evaluation !== undefined);

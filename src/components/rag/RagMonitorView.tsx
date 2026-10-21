@@ -19,7 +19,7 @@ import { InstrumentPanel } from './InstrumentPanel';
 import {
   ChatTurn,
   PlatformHealth,
-  ApiTraceAlert,
+  ApiAlert,
   AgentDriftInfo,
   WsLiveSpanEvent
 } from '../../lib/ragTypes';
@@ -28,6 +28,7 @@ import {
   fetchCorpus,
   fetchPlatformHealth,
   fetchAgentDrift,
+  fetchAlerts,
   acknowledgeAlert,
   createLiveSpanSocket,
   pollTraceEvaluation,
@@ -51,10 +52,10 @@ export const RagMonitorView: React.FC<RagMonitorViewProps> = ({ onNavigateToTrac
     apiReady: false,
     evaluatorHealthy: false,
     workersAlive: 0,
-    queueDepth: 0
+    queueDepth: null
   });
   const [driftData, setDriftData] = useState<AgentDriftInfo[]>([]);
-  const [recentAlerts, setRecentAlerts] = useState<ApiTraceAlert[]>([]);
+  const [recentAlerts, setRecentAlerts] = useState<ApiAlert[]>([]);
 
   // Corpus from GET /corpus
   const [corpusDocuments, setCorpusDocuments] = useState<string[]>([]);
@@ -83,6 +84,12 @@ export const RagMonitorView: React.FC<RagMonitorViewProps> = ({ onNavigateToTrac
     const driftRes = await fetchAgentDrift();
     if (driftRes.drift) {
       setDriftData(driftRes.drift);
+    }
+
+    // Keep the last list on a failed poll rather than blanking the incidents.
+    const alertsRes = await fetchAlerts();
+    if (!alertsRes.error) {
+      setRecentAlerts(alertsRes.alerts);
     }
   }, []);
 
@@ -255,11 +262,11 @@ export const RagMonitorView: React.FC<RagMonitorViewProps> = ({ onNavigateToTrac
     }
   };
 
-  const handleAcknowledgeAlert = async (alertId: string) => {
+  const handleAcknowledgeAlert = async (alertId: number) => {
     const ok = await acknowledgeAlert(alertId);
     if (ok) {
       setRecentAlerts((prev) =>
-        prev.map((a) => (a.id === alertId ? { ...a, status: 'acknowledged' } : a))
+        prev.map((a) => (a.id === alertId ? { ...a, acknowledged: true } : a))
       );
       setTurns((prev) =>
         prev.map((t) => {
@@ -269,7 +276,7 @@ export const RagMonitorView: React.FC<RagMonitorViewProps> = ({ onNavigateToTrac
             traceDetail: {
               ...t.traceDetail,
               alerts: t.traceDetail.alerts.map((a) =>
-                a.id === alertId ? { ...a, status: 'acknowledged' } : a
+                a.id === alertId ? { ...a, acknowledged: true } : a
               ),
             },
           };
